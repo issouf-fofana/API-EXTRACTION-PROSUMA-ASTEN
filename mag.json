@@ -1,0 +1,202 @@
+{
+    "030": {
+      "url": "https://pos4-prod-prosuma.prosuma.pos",
+      "name": "HYPER HAYAT"
+    },
+    "050": {
+      "url": "https://pos1-prod-prosuma.prosuma.pos",
+      "name": "CASH CENTER ZONE 4"
+    },
+    "080": {
+      "url": "https://pos9-prod-prosuma.prosuma.pos",
+      "name": "MANDARINE MARCORY"
+    },
+    "100": {
+      "url": "https://pos5-prod-prosuma.prosuma.pos",
+      "name": "CASINO 2 PLATEAUX"
+    },
+    "110": {
+      "url": "https://pos1-prod-prosuma.prosuma.pos",
+      "name": "SUPER U VALLON"
+    },
+    "120": {
+      "url": "https://pos2-prod-prosuma.prosuma.pos",
+      "name": "MANDARINE GOLF"
+    },
+    "220": {
+      "url": "https://pos6-prod-prosuma.prosuma.pos",
+      "name": "SUPER U PLATEAU"
+    },
+    "230": {
+      "url": "https://pos3-prod-prosuma.prosuma.pos",
+      "name": "HYPER CASINO PRIMA"
+    },
+    "235": {
+      "url": "https://pos7-prod-prosuma.prosuma.pos",
+      "name": "SUPER U DJIBI"
+    },
+    "240": {
+      "url": "https://pos8-prod-prosuma.prosuma.pos",
+      "name": "FNAC CAP SUD"
+    },
+    "245": {
+      "url": "https://pos8-prod-prosuma.prosuma.pos",
+      "name": "FNAC CAP NORD"
+    },
+    "250": {
+      "url": "https://pos8-prod-prosuma.prosuma.pos",
+      "name": "GIFI Z4"
+    },
+    "261": {
+      "url": "https://pos8-prod-prosuma.prosuma.pos",
+      "name": "MONOP COCODY"
+    },
+    "281": {
+      "url": "https://pos2-prod-prosuma.prosuma.pos",
+      "name": "CASINO MANDARINE ANGRE"
+    },
+    "290": {
+      "url": "https://pos10-prod-prosuma.prosuma.pos",
+      "name": "MANDARINE BIETRY"
+    },
+    "291": {
+      "url": "https://pos9-prod-prosuma.prosuma.pos",
+      "name": "MANDARINE DANGA"
+    },
+    "292": {
+      "url": "https://pos9-prod-prosuma.prosuma.pos",
+      "name": "MANDARINE KOUMASSI"
+    },
+    "293": {
+      "url": "https://pos9-prod-prosuma.prosuma.pos",
+      "name": "MANDARINE AMBASSADE CHINE"
+    },
+    "294": {
+      "url": "https://pos2-prod-prosuma.prosuma.pos",
+      "name": "CASINO MANDARINE RIVIERA 4"
+    },
+    "295": {
+      "url": "https://pos11-prod-prosuma.prosuma.pos",
+      "name": "CASINO ALLABRA"
+    },
+    "301": {
+      "url": "https://pos12-prod-prosuma.prosuma.pos",
+      "name": "S2P SOCOCE ZONE 3"
+    },
+    "302": {
+      "url": "https://pos13-prod-prosuma.prosuma.pos",
+      "name": "S2P HYPER U"
+    },
+    "303": {
+      "url": "https://pos15-prod-prosuma.prosuma.pos",
+      "name": "S2P SOCOCE BOUAKE"
+    },
+    "304": {
+      "url": "https://pos14-prod-prosuma.prosuma.pos",
+      "name": "S2P SOCOCE DALOA"
+    },
+    "305": {
+      "url": "https://pos12-prod-prosuma.prosuma.pos",
+      "name": "S2P SOCOCE RUE DES JARDINS"
+    },
+    "306": {
+      "url": "https://pos14-prod-prosuma.prosuma.pos",
+      "name": "S2P SOCOCE YAMOUSSOKRO"
+    },
+    "307": {
+      "url": "https://pos15-prod-prosuma.prosuma.pos",
+      "name": "S2P SOCOCE GAGNOA"
+    },
+    "308": {
+      "url": "https://pos12-prod-prosuma.prosuma.pos",
+      "name": "S2P SOCOCE ABOBO"
+    },
+    "309": {
+      "url": "https://pos15-prod-prosuma.prosuma.pos",
+      "name": "S2P SUPERETTE SOCOCE BOUAKE"
+    },
+    "310": {
+      "url": "https://pos14-prod-prosuma.prosuma.pos",
+      "name": "S2P ECOMARCHE SAN PEDRO"
+    },
+    "311": {
+      "url": "https://pos12-prod-prosuma.prosuma.pos",
+      "name": "SOCOCE CHATEAU EAU"
+    },
+    "312": {
+      "url": "https://pos15-prod-prosuma.prosuma.pos",
+      "name": "S2P SOCOCE RIVIERA"
+    },
+    "353": {
+      "url": "https://pos17-prod-prosuma.prosuma.pos",
+      "name": "CASH IVOIRE U ANGRE"
+    },
+    "354": {
+      "url": "https://pos18-prod-prosuma.prosuma.pos",
+      "name": "CASH IVOIRE U TOITS ROUGES"
+    },
+    "356": {
+      "url": "https://pos17-prod-prosuma.prosuma.pos",
+      "name": "CASH IVOIRE U COCODY"
+    },
+    "357": {
+      "url": "https://pos18-prod-prosuma.prosuma.pos",
+      "name": "CASH IVOIRE U REMBLAIS"
+    },
+    "361": {
+      "url": "https://pos16-prod-prosuma.prosuma.pos",
+      "name": "CASH IVOIRE ABOBO"
+    },
+    "364": {
+      "url": "https://pos17-prod-prosuma.prosuma.pos",
+      "name": "CASH IVOIRE U 7 DECEMBRE"
+    },
+    "368": {
+      "url": "https://pos18-prod-prosuma.prosuma.pos",
+      "name": "CASH IVOIRE U SADIGUIBA"
+    },
+    "371": {
+      "url": "https://pos16-prod-prosuma.prosuma.pos",
+      "name": "CASH IVOIRE ANANERAIE"
+    },
+    "372": {
+      "url": "https://pos18-prod-prosuma.prosuma.pos",
+      "name": "CASH IVOIRE U MAROC"
+    },
+    "376": {
+      "url": "https://pos18-prod-prosuma.prosuma.pos",
+      "name": "CASH IVOIRE U SICOGI ANGRE"
+    },
+    "378": {
+      "url": "https://pos18-prod-prosuma.prosuma.pos",
+      "name": "CASH IVOIRE DJE KONAN"
+    },
+    "410": {
+      "url": "https://pos17-prod-prosuma.prosuma.pos",
+      "name": "CASH IVOIRE U BESSIKOI"
+    },
+    "411": {
+      "url": "https://pos17-prod-prosuma.prosuma.pos",
+      "name": "CASH IVOIRE U ANTENNE"
+    },
+    "412": {
+      "url": "https://pos16-prod-prosuma.prosuma.pos",
+      "name": "CASH IVOIRE DOKUI"
+    },
+    "413": {
+      "url": "https://pos17-prod-prosuma.prosuma.pos",
+      "name": "CASH IVOIRE U AGOUTI"
+    },
+    "414": {
+      "url": "https://pos16-prod-prosuma.prosuma.pos",
+      "name": "CASH IVOIRE U PORT-BOUËT"
+    },
+    "415": {
+      "url": "https://pos16-prod-prosuma.prosuma.pos",
+      "name": "CASH IVOIRE U M'BADON"
+    },
+    "416": {
+      "url": "https://pos16-prod-prosuma.prosuma.pos",
+      "name": "CASH IVOIRE U LATRILLE"
+    }
+  }
