@@ -240,32 +240,44 @@ run_extraction() {
         echo "🔧 Variables d'environnement: DATE_START=, DATE_END= (aucune date - extraction complète)"
         python "$script_name"
     elif [ "$USE_DEFAULT_DATES" = "false" ]; then
-        echo "🔧 Variables d'environnement définies: DATE_START=$CUSTOM_START_DATE, DATE_END=$CUSTOM_END_DATE"
-        if [ -n "$selected_status" ]; then
-            DATE_START="$CUSTOM_START_DATE" DATE_END="$CUSTOM_END_DATE" STATUT_COMMANDE="$selected_status" python "$script_name"
-        else
-            DATE_START="$CUSTOM_START_DATE" DATE_END="$CUSTOM_END_DATE" STATUT_COMMANDE="" python "$script_name"
-        fi
+    echo "🔧 Variables d'environnement définies: DATE_START=$CUSTOM_START_DATE, DATE_END=$CUSTOM_END_DATE"
+    if [ -n "$selected_status" ]; then
+      DATE_START="$CUSTOM_START_DATE" DATE_END="$CUSTOM_END_DATE" STATUT_COMMANDE="$selected_status" python "$script_name"
+    else
+      DATE_START="$CUSTOM_START_DATE" DATE_END="$CUSTOM_END_DATE" STATUT_COMMANDE="" python "$script_name"
+    fi
     else
         # S'assurer que les variables ne sont pas définies pour utiliser les dates par défaut
         unset DATE_START
         unset DATE_END
-        if [ -n "$selected_status" ]; then
-            STATUT_COMMANDE="$selected_status" python "$script_name"
-        else
-            STATUT_COMMANDE="" python "$script_name"
-        fi
+    if [ -n "$selected_status" ]; then
+      STATUT_COMMANDE="$selected_status" python "$script_name"
+    else
+      STATUT_COMMANDE="" python "$script_name"
     fi
+    fi
+}
+
+# Fonction pour afficher le logo ALIEN
+show_alien_logo() {
+    echo "┌──────────────────────────────────────────────────────────────────────────────┐"
+    echo "│                                                                              │"
+    echo "│                    █████╗ ██╗     ██╗███████╗███╗   ██╗                      │"
+    echo "│                   ██╔══██╗██║     ██║██╔════╝████╗  ██║                      │"
+    echo "│                   ███████║██║     ██║█████╗  ██╔██╗ ██║                      │"
+    echo "│                   ██╔══██║██║     ██║██╔══╝  ██║╚██╗██║                      │"
+    echo "│                   ██║  ██║███████╗██║███████╗██║ ╚████║                      │"
+    echo "│                   ╚═╝  ╚═╝╚══════╝╚═╝╚══════╝╚═╝  ╚═══╝                      │"
+    echo "│                                                                              │"
+    echo "│                    🚀 API EXTRACTION BACK OFFICE ASTEN - MENU PRINCIPAL                │"
+    echo "│                                                                              │"
+    echo "└──────────────────────────────────────────────────────────────────────────────┘"
 }
 
 # Menu principal
 while true; do
     clear
-    echo "┌──────────────────────────────────────────────────────────────────────────────┐"
-    echo "│                                                                              │"
-    echo "│                    🚀 API EXTRACTION BACK OFFICE ASTEN - MENU PRINCIPAL                │"
-    echo "│                                                                              │"
-    echo "└──────────────────────────────────────────────────────────────────────────────┘"
+    show_alien_logo
     echo
     echo "┌──────────────────────────────────────────────────────────────────────────────┐"
     echo "│                                                                              │"
@@ -275,8 +287,8 @@ while true; do
     echo "│    2. Commandes Directes                                                    │"
     echo "│    3. Commandes Réassort                                                    │"
     echo "│    4. Base Articles (Tous les articles)                                    │
-│    5. Articles avec prix promo                                             │
-│    6. Promotions                                                            │"
+          │    5. Articles avec prix promo                                             │
+          │    6. Promotions                                                            │"
     echo "│    7. Produits Non Trouvés                                                  │"
     echo "│    8. Commandes par Thème/Promotion                                         │"
     echo "│    9. Réception de Commandes                                                │"

@@ -11,12 +11,27 @@ PROJECT_PATH="$(cd "$(dirname "$0")" && pwd)"
 ENV_NAME="env_Api_Extraction_Alien"
 ENV_PATH="$HOME/$ENV_NAME"
 
-echo "============================================================"
-echo "   EXTRACTION AUTOMATIQUE - COMMANDES RÉASSORT"
-echo "   Période: Hier à Aujourd'hui"
-echo "   Filtre: En attente de livraison"
-echo "============================================================"
-echo
+# Fonction pour afficher le logo ALIEN
+show_alien_logo() {
+    echo "┌──────────────────────────────────────────────────────────────────────────────┐"
+    echo "│                                                                              │"
+    echo "│                    █████╗ ██╗     ██╗███████╗███╗   ██╗                      │"
+    echo "│                   ██╔══██╗██║     ██║██╔════╝████╗  ██║                      │"
+    echo "│                   ███████║██║     ██║█████╗  ██╔██╗ ██║                      │"
+    echo "│                   ██╔══██║██║     ██║██╔══╝  ██║╚██╗██║                      │"
+    echo "│                   ██║  ██║███████╗██║███████╗██║ ╚████║                      │"
+    echo "│                   ╚═╝  ╚═╝╚══════╝╚═╝╚══════╝╚═╝  ╚═══╝                      │"
+    echo "│                                                                              │"
+    echo "│                    EXTRACTION AUTOMATIQUE - COMMANDES RÉASSORT               │"
+    echo "│                    Période: Hier à Aujourd'hui                               │"
+    echo "│                    Filtre: En attente de livraison                           │"
+    echo "│                                                                              │"
+    echo "└──────────────────────────────────────────────────────────────────────────────┘"
+    echo
+}
+
+clear
+show_alien_logo
 
 # Vérifier si Python est installé
 if command -v python3 &> /dev/null; then

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 Extracteur API Prosuma RPOS - Articles avec prix promo
 Récupère les articles avec prix promotionnels via l'API Prosuma avec pagination automatique
@@ -13,6 +14,14 @@ from datetime import datetime, timedelta
 import urllib3
 from dotenv import load_dotenv
 import sys
+import io
+
+# Configurer stdout/stderr pour UTF-8 sur Windows
+if sys.platform == 'win32':
+    if hasattr(sys.stdout, 'buffer'):
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    if hasattr(sys.stderr, 'buffer'):
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
 # Ajouter le chemin du répertoire parent pour l'importation de utils
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -23,15 +32,26 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # Configuration du logging
 def setup_logging(log_dir, api_name):
+    # Désactiver tous les handlers existants pour éviter les conflits
+    root_logger = logging.getLogger()
+    root_logger.handlers = []
+    
     log_file = os.path.join(log_dir, f"{api_name.lower().replace(' ', '_')}.log")
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.FileHandler(log_file),
-            logging.StreamHandler(sys.stdout)
-        ]
-    )
+    
+    # Créer les handlers
+    file_handler = logging.FileHandler(log_file, encoding='utf-8')
+    stream_handler = SafeStreamHandler()
+    
+    # Formatter
+    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    file_handler.setFormatter(formatter)
+    stream_handler.setFormatter(formatter)
+    
+    # Ajouter les handlers au root logger
+    root_logger.addHandler(file_handler)
+    root_logger.addHandler(stream_handler)
+    root_logger.setLevel(logging.INFO)
+    
     return logging.getLogger(__name__)
 
 class ProsumaAPIArticlePromoExtractor:
@@ -71,8 +91,13 @@ class ProsumaAPIArticlePromoExtractor:
             logger.error("❌ PROSUMA_USER et PROSUMA_PASSWORD doivent être configurés dans config.env")
             sys.exit(1)
         
+        # Configuration de la session HTTP
+        self.session = requests.Session()
+        self.session.auth = (self.prosuma_user, self.prosuma_password)
+        self.session.verify = False
+        
         logger.info(f"Extracteur API Articles avec prix promo Prosuma initialisé pour {self.prosuma_user}")
-        logger.info(f"Magasins configurés: {[s['code'] for s in self.shops]}")
+        logger.info(f"Magasins configurés: {list(self.shops.keys())}")
 
     def get_network_path_for_shop(self, api_folder_name):
         """Construit le chemin réseau pour un dossier d'API spécifique."""
@@ -111,20 +136,54 @@ class ProsumaAPIArticlePromoExtractor:
         return None
 
     def get_shop_info(self, base_url, shop_code):
-        """Récupère les informations détaillées d'un magasin par son code."""
-        url = f"{base_url}/api/shop/"
-        params = {'code': shop_code}
-        response_data = self._make_api_request(url, params)
-        if response_data and 'results' in response_data:
-            for shop in response_data['results']:
-                if shop.get('code') == shop_code:
-                    return shop
-        return None
+        """Récupère les informations d'un magasin"""
+        try:
+            # Essayer d'abord avec l'endpoint direct
+            url = f"{base_url}/api/shop/{shop_code}/"
+            response = self.session.get(url, timeout=self.timeout)
+            
+            if response.status_code == 200:
+                shop_data = response.json()
+                if isinstance(shop_data, dict) and shop_data.get('reference') == shop_code:
+                    logger.info(f"✅ Magasin {shop_code} trouvé: {shop_data.get('name', 'Nom inconnu')}")
+                    return shop_data
+            
+            # Si pas trouvé, chercher dans la liste paginée
+            url = f"{base_url}/api/shop/"
+            page = 1
+            while True:
+                params = {'page': page, 'page_size': 100}
+                response = self.session.get(url, params=params, timeout=self.timeout)
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    shops = data.get('results', [])
+                    
+                    for shop in shops:
+                        if shop.get('reference') == shop_code:
+                            logger.info(f"✅ Magasin {shop_code} trouvé: {shop.get('name', 'Nom inconnu')}")
+                            return shop
+                    
+                    if not data.get('next'):
+                        break
+                    page += 1
+                else:
+                    break
+            
+            logger.warning(f"⚠️ Magasin {shop_code} non trouvé dans la liste")
+            return None
+            
+        except Exception as e:
+            logger.error(f"❌ Erreur lors de la récupération des informations du magasin: {e}")
+            return None
 
     def get_articles_with_promo(self, base_url, shop_id):
         """Récupère tous les articles avec prix promo pour un magasin donné avec pagination."""
         all_articles = []
         page = 1
+        
+        # Timeout augmenté pour les requêtes de produits (peuvent être lourdes)
+        product_timeout = max(self.timeout * 2, 120)  # Au moins 120 secondes
         
         # D'abord, récupérer le total d'articles avec prix promo
         url = f"{base_url}/api/product/"
@@ -135,9 +194,19 @@ class ProsumaAPIArticlePromoExtractor:
             'has_promo_price': 'true' # Filtre pour les articles avec prix promo
         }
         
-        first_response = self._make_api_request(url, params)
-        if first_response is None:
-            logger.error("❌ Échec de la récupération du nombre total d'articles avec prix promo.")
+        # Utiliser la session avec timeout augmenté
+        try:
+            response = self.session.get(url, params=params, timeout=product_timeout)
+            if response.status_code != 200:
+                logger.error(f"❌ Erreur HTTP {response.status_code} lors de la récupération des articles avec prix promo.")
+                return []
+            first_response = response.json()
+        except requests.exceptions.Timeout:
+            logger.error(f"❌ Timeout ({product_timeout}s) lors de la récupération des articles avec prix promo.")
+            logger.warning(f"⚠️ Le serveur met trop de temps à répondre. Essayez plus tard ou contactez l'administrateur.")
+            return []
+        except Exception as e:
+            logger.error(f"❌ Erreur lors de la récupération des articles avec prix promo: {e}")
             return []
         
         total_articles = first_response.get('count', 0)
@@ -148,6 +217,7 @@ class ProsumaAPIArticlePromoExtractor:
         logger.info("=" * 60)
         logger.info(f"Total articles avec prix promo disponibles: {total_articles:,}")
         logger.info(f"Nombre de pages à récupérer: {total_pages}")
+        logger.info(f"Timeout par requête: {product_timeout}s")
         logger.info("=" * 60)
 
         # Traiter la première page déjà récupérée
@@ -160,7 +230,6 @@ class ProsumaAPIArticlePromoExtractor:
         # Continuer avec les pages suivantes
         page = 2
         while page <= total_pages:
-            url = f"{base_url}/api/product/"
             params = {
                 'page': page,
                 'page_size': self.page_size,
@@ -168,35 +237,51 @@ class ProsumaAPIArticlePromoExtractor:
                 'has_promo_price': 'true' # Filtre pour les articles avec prix promo
             }
             
-            response_data = self._make_api_request(url, params)
+            try:
+                response = self.session.get(url, params=params, timeout=product_timeout)
+                
+                if response.status_code == 200:
+                    response_data = response.json()
+                    results = response_data.get('results', [])
+                    
+                    if not results:
+                        logger.info(f"   ✅ Dernière page atteinte (page {page}) - Aucun enregistrement retourné")
+                        break
 
-            if response_data is None:
-                logger.error(f"❌ Échec de la récupération des articles avec prix promo pour la page {page}.")
-                # Continuer avec la page suivante en cas d'erreur
+                    all_articles.extend(results)
+                    
+                    progress_percent = (page - 1) * 100 // total_pages if total_pages > 0 else 0
+                    logger.info(f"   Page {page}/{total_pages} ({progress_percent}%): {len(results)} articles avec prix promo récupérés (total: {len(all_articles):,}/{total_articles:,})")
+
+                    # Vérifier si on a récupéré tous les articles ou si on est à la dernière page
+                    if len(all_articles) >= total_articles:
+                        logger.info(f"   ✅ Tous les articles récupérés (page {page}/{total_pages})")
+                        break
+                    
+                    # Si on est à la dernière page calculée, on arrête
+                    if page >= total_pages:
+                        logger.info(f"   ✅ Dernière page atteinte (page {page}/{total_pages})")
+                        break
+                    
+                    page += 1
+                else:
+                    logger.error(f"❌ Erreur HTTP {response.status_code} pour la page {page}.")
+                    # Continuer avec la page suivante en cas d'erreur temporaire
+                    if response.status_code in [500, 503, 502]:
+                        logger.warning(f"⚠️ Erreur serveur, tentative de continuer...")
+                        page += 1
+                        continue
+                    break
+                    
+            except requests.exceptions.Timeout:
+                logger.error(f"❌ Timeout ({product_timeout}s) pour la page {page}.")
+                logger.warning(f"⚠️ Le serveur met trop de temps à répondre. Passage à la page suivante...")
                 page += 1
                 continue
-
-            results = response_data.get('results', [])
-            if not results:
-                logger.info(f"   ✅ Dernière page atteinte (page {page}) - Aucun enregistrement retourné")
-                break
-
-            all_articles.extend(results)
-            
-            progress_percent = (page - 1) * 100 // total_pages if total_pages > 0 else 0
-            logger.info(f"   Page {page}/{total_pages} ({progress_percent}%): {len(results)} articles avec prix promo récupérés (total: {len(all_articles):,}/{total_articles:,})")
-
-            # Vérifier si on a récupéré tous les articles ou si on est à la dernière page
-            if len(all_articles) >= total_articles:
-                logger.info(f"   ✅ Tous les articles récupérés (page {page}/{total_pages})")
-                break
-            
-            # Si on est à la dernière page calculée, on arrête
-            if page >= total_pages:
-                logger.info(f"   ✅ Dernière page atteinte (page {page}/{total_pages})")
-                break
-            
-            page += 1
+            except Exception as e:
+                logger.error(f"❌ Erreur lors de la récupération de la page {page}: {e}")
+                page += 1
+                continue
         
         logger.info("=" * 60)
         logger.info("RÉSUMÉ EXTRACTION")
@@ -216,7 +301,12 @@ class ProsumaAPIArticlePromoExtractor:
         """Exporte les articles avec prix promo vers un fichier CSV."""
         network_path = self.get_network_path_for_shop(self.api_name)
         if not network_path:
-            logger.error(f"Impossible de créer le dossier réseau pour le magasin {shop_code}")
+            logger.error(f"❌ Impossible de créer le dossier réseau pour le magasin {shop_code}")
+            return None
+        
+        # Créer le dossier réseau s'il n'existe pas
+        if not create_network_folder(network_path):
+            logger.error(f"❌ Impossible de créer le dossier réseau: {network_path}")
             return None
         
         # Créer un fichier temporaire local
@@ -271,14 +361,52 @@ class ProsumaAPIArticlePromoExtractor:
             logger.info(f"   {len(articles)} articles avec prix promo exportés")
             logger.info(f"   {len(fieldnames)} colonnes par article")
             
-            # Copier vers le réseau et supprimer le fichier local
+            # Copier vers le réseau
             import shutil
             network_filepath = os.path.join(network_path, filename)
-            shutil.copy2(local_filepath, network_filepath)
-            logger.info(f"✅ Fichier copié sur le réseau: {network_filepath}")
-            os.remove(local_filepath)
-            logger.info(f"🗑️ Fichier local supprimé")
-            return network_filepath
+            
+            # Vérifier que le dossier réseau existe avant de copier
+            if not os.path.exists(network_path):
+                logger.warning(f"⚠️ Le dossier réseau n'existe pas: {network_path}")
+                logger.info(f"   Tentative de création...")
+                if create_network_folder(network_path):
+                    logger.info(f"   ✅ Dossier créé avec succès")
+                else:
+                    logger.error(f"   ❌ Impossible de créer le dossier")
+                    logger.info(f"📁 Fichier conservé uniquement localement: {local_filepath}")
+                    return local_filepath
+            
+            try:
+                shutil.copy2(local_filepath, network_filepath)
+                
+                # Vérifier que la copie a réussi
+                if os.path.exists(network_filepath):
+                    file_size = os.path.getsize(network_filepath)
+                    logger.info(f"✅✅✅ FICHIER COPIÉ SUR LE RÉSEAU AVEC SUCCÈS ✅✅✅")
+                    logger.info(f"   📁 Chemin réseau: {network_filepath}")
+                    logger.info(f"   📊 Taille: {file_size:,} octets")
+                    
+                    # Supprimer le fichier local après vérification
+                    os.remove(local_filepath)
+                    logger.info(f"🗑️ Fichier local supprimé")
+                    return network_filepath
+                else:
+                    logger.error(f"❌❌❌ LE FICHIER N'EXISTE PAS APRÈS LA COPIE ❌❌❌")
+                    logger.error(f"   Chemin attendu: {network_filepath}")
+                    logger.info(f"📁 Fichier conservé uniquement localement: {local_filepath}")
+                    return local_filepath
+                    
+            except PermissionError as pe:
+                logger.error(f"❌❌❌ ERREUR DE PERMISSION LORS DE LA COPIE ❌❌❌")
+                logger.error(f"   {pe}")
+                logger.info(f"📁 Fichier conservé uniquement localement: {local_filepath}")
+                return local_filepath
+            except Exception as copy_error:
+                logger.error(f"❌❌❌ ERREUR LORS DE LA COPIE VERS LE RÉSEAU ❌❌❌")
+                logger.error(f"   {copy_error}")
+                logger.info(f"📁 Fichier conservé uniquement localement: {local_filepath}")
+                return local_filepath
+                
         except Exception as e:
             logger.error(f"❌ Erreur lors de l'export CSV pour le magasin {shop_code}: {e}")
             return None
@@ -295,10 +423,17 @@ class ProsumaAPIArticlePromoExtractor:
         logger.info(f"Nom magasin: {shop_name}")
         
         # Test de connexion
-        if not self._make_api_request(f"{base_url}/api/shop/"):
-            logger.error(f"❌ Connexion API échouée pour le magasin {shop_code}. Vérifiez l'URL ou les identifiants.")
+        try:
+            test_url = f"{base_url}/api/user/"
+            response = self.session.get(test_url, timeout=10)
+            if response.status_code == 200:
+                logger.info(f"✅ Connexion API réussie: {base_url}")
+            else:
+                logger.error(f"❌ Erreur de connexion API {base_url}: {response.status_code}")
+                return False
+        except Exception as e:
+            logger.error(f"❌ Erreur de connexion API {base_url}: {e}")
             return False
-        logger.info(f"✅ Connexion API réussie: {base_url}")
 
         # Récupérer l'ID du magasin
         logger.info(f"Récupération des informations du magasin {shop_code}...")

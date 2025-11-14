@@ -172,46 +172,103 @@ class ProsumaAPIPromoExtractor:
             logger.error(f"❌ Erreur lors du comptage: {e}")
             return 0
 
-    def get_promotions(self, base_url, shop_id, page_size=1000, max_pages=10):
-        """Récupère toutes les promotions avec pagination"""
+    def get_promotions(self, base_url, shop_id, page_size=1000):
+        """Récupère toutes les promotions avec pagination complète"""
         all_promotions = []
         page = 1
         
         try:
-            while page <= max_pages:
-                url = f"{base_url}/api/promotion/"
+            # D'abord, récupérer le total de promotions
+            url = f"{base_url}/api/promotion/"
+            params = {
+                'shop': shop_id,
+                'page_size': page_size,
+                'page': 1
+            }
+            
+            response = self.session.get(url, params=params, timeout=30)
+            
+            if response.status_code != 200:
+                logger.error(f"❌ Erreur lors de la récupération des promotions: {response.status_code}")
+                return []
+            
+            first_data = response.json()
+            total_records = first_data.get('count', 0)
+            total_pages = (total_records + page_size - 1) // page_size if total_records > 0 else 0
+            
+            logger.info("=" * 60)
+            logger.info("INFORMATIONS D'EXTRACTION")
+            logger.info("=" * 60)
+            logger.info(f"Total promotions disponibles: {total_records:,}")
+            logger.info(f"Nombre de pages à récupérer: {total_pages}")
+            logger.info("=" * 60)
+            
+            # Traiter la première page déjà récupérée
+            promotions = first_data.get('results', [])
+            if promotions:
+                all_promotions.extend(promotions)
+                logger.info(f"  ✅ Page 1: {len(promotions)} promotions récupérées (total: {len(all_promotions):,}/{total_records:,})")
+            
+            # Continuer avec les pages suivantes
+            page = 2
+            while page <= total_pages:
                 params = {
                     'shop': shop_id,
                     'page_size': page_size,
                     'page': page
                 }
                 
-                logger.info(f"Récupération page {page}...")
-                response = self.session.get(url, params=params, timeout=10)
+                progress_percent = (page - 1) * 100 // total_pages if total_pages > 0 else 0
+                logger.info(f"📄 Récupération page {page}/{total_pages} ({progress_percent}%) - {len(all_promotions):,}/{total_records:,} promotions...")
+                
+                response = self.session.get(url, params=params, timeout=30)
                 
                 if response.status_code == 200:
                     data = response.json()
                     promotions = data.get('results', [])
                     
                     if not promotions:
-                        logger.info(f"  ✅ Dernière page atteinte (page {page})")
+                        logger.info(f"  ✅ Dernière page atteinte (page {page}) - Aucune promotion retournée")
                         break
                     
                     all_promotions.extend(promotions)
-                    logger.info(f"  Page {page}: {len(promotions)} promotions (total: {len(all_promotions)})")
+                    logger.info(f"  ✅ Page {page}: {len(promotions)} promotions récupérées (total: {len(all_promotions):,}/{total_records:,})")
                     
-                    # Vérifier s'il y a une page suivante
-                    if not data.get('next'):
-                        logger.info(f"  ✅ Dernière page atteinte (page {page})")
+                    # Vérifier si on a récupéré toutes les promotions ou si on est à la dernière page
+                    if len(all_promotions) >= total_records:
+                        logger.info(f"  ✅ Toutes les promotions récupérées (page {page}/{total_pages})")
+                        break
+                    
+                    # Si on est à la dernière page calculée, on arrête
+                    if page >= total_pages:
+                        logger.info(f"  ✅ Dernière page atteinte (page {page}/{total_pages})")
                         break
                     
                     page += 1
                 else:
                     logger.error(f"❌ Erreur lors de la récupération des promotions: {response.status_code}")
+                    # Continuer avec la page suivante en cas d'erreur temporaire
+                    if response.status_code == 500 or response.status_code == 503:
+                        logger.warning(f"⚠️ Erreur serveur, tentative de continuer...")
+                        page += 1
+                        continue
                     break
                     
         except Exception as e:
             logger.error(f"❌ Erreur lors de la récupération des promotions: {e}")
+        
+        # Afficher le résumé final
+        logger.info("=" * 60)
+        logger.info("RÉSUMÉ EXTRACTION")
+        logger.info("=" * 60)
+        logger.info(f"Promotions trouvées: {total_records:,}")
+        logger.info(f"Promotions extraites: {len(all_promotions):,}")
+        if total_records > 0:
+            success_rate = (len(all_promotions) / total_records) * 100
+            logger.info(f"Taux de réussite: {success_rate:.2f}%")
+        else:
+            logger.info("Taux de réussite: N/A (aucune promotion trouvée)")
+        logger.info("=" * 60)
         
         return all_promotions
 

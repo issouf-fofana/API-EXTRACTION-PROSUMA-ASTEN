@@ -71,13 +71,26 @@ if exist "%NETWORK_PROJECT%\requirements.txt" (
     echo ⚠️  Fichier requirements.txt non trouvé sur le réseau
 )
 
+:: Fonction pour afficher le logo ALIEN
+:show_alien_logo
+echo ============================================================
+echo.
+echo                    █████╗ ██╗     ██╗███████╗███╗   ██╗
+echo                   ██╔══██╗██║     ██║██╔════╝████╗  ██║
+echo                   ███████║██║     ██║█████╗  ██╔██╗ ██║
+echo                   ██╔══██║██║     ██║██╔══╝  ██║╚██╗██║
+echo                   ██║  ██║███████╗██║███████╗██║ ╚████║ 
+echo                   ╚═╝  ╚═╝╚══════╝╚═╝╚══════╝╚═╝  ╚═══╝
+echo.
+echo            API EXTRACTION BACK OFFICE ASTEN - MENU PRINCIPAL
+echo ============================================================
+echo.
+goto :eof
+
 :: Menu principal
 :menu
 cls
-echo ============================================================
-echo           API EXTRACTION PROSUMA - MENU PRINCIPAL
-echo ============================================================
-echo.
+call :show_alien_logo
 echo Environnement: %ENV_NAME%
 echo Projet: %NETWORK_PROJECT%
 echo.

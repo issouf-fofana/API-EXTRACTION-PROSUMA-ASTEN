@@ -10,6 +10,7 @@ import csv
 import json
 import logging
 import shutil
+import time
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 import urllib3
@@ -253,6 +254,106 @@ class ProsumaAPICommandeReassortExtractor:
             logger.error(f"❌ Erreur lors de la récupération des informations du magasin: {e}")
             return None
 
+    def get_supplier_info(self, base_url, supplier_id):
+        """Récupère les informations complètes d'un fournisseur via l'API /api/supplier/{id}/"""
+        if not supplier_id:
+            return None
+        
+        try:
+            # Essayer d'abord avec l'endpoint direct
+            url = f"{base_url}/api/supplier/{supplier_id}/"
+            response = self.session.get(url, timeout=30)
+            
+            if response.status_code == 200:
+                supplier_data = response.json()
+                if isinstance(supplier_data, dict):
+                    return supplier_data
+            
+            # Si pas trouvé, chercher dans la liste paginée
+            url = f"{base_url}/api/supplier/"
+            page = 1
+            while True:
+                params = {'page': page, 'page_size': 100}
+                response = self.session.get(url, params=params, timeout=30)
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    suppliers = data.get('results', [])
+                    
+                    for supplier in suppliers:
+                        if supplier.get('id') == supplier_id:
+                            return supplier
+                    
+                    if not data.get('next'):
+                        break
+                    page += 1
+                else:
+                    break
+            
+            return None
+            
+        except Exception as e:
+            logger.debug(f"⚠️ Erreur lors de la récupération du fournisseur {supplier_id}: {e}")
+            return None
+
+    def enrich_orders_with_supplier_info(self, base_url, orders):
+        """Enrichit les commandes avec les informations complètes du fournisseur (is_central)"""
+        if not orders:
+            return orders
+        
+        logger.info(f"🔍 Enrichissement des commandes avec les informations des fournisseurs...")
+        
+        # Collecter tous les IDs de fournisseurs uniques
+        supplier_ids = set()
+        for order in orders:
+            supplier = order.get('supplier', {})
+            if isinstance(supplier, dict):
+                supplier_id = supplier.get('id')
+                if supplier_id:
+                    supplier_ids.add(supplier_id)
+            elif isinstance(supplier, str):
+                # Si supplier est une URL, extraire l'ID
+                if supplier.endswith('/'):
+                    supplier = supplier[:-1]
+                supplier_id = supplier.split('/')[-1]
+                if supplier_id:
+                    supplier_ids.add(supplier_id)
+        
+        logger.info(f"   📊 {len(supplier_ids)} fournisseur(s) unique(s) à récupérer")
+        
+        # Créer un cache pour les informations des fournisseurs
+        supplier_cache = {}
+        for supplier_id in supplier_ids:
+            supplier_info = self.get_supplier_info(base_url, supplier_id)
+            if supplier_info:
+                supplier_cache[supplier_id] = supplier_info
+        
+        logger.info(f"   ✅ {len(supplier_cache)} fournisseur(s) récupéré(s)")
+        
+        # Enrichir les commandes avec les informations du fournisseur
+        enriched_count = 0
+        for order in orders:
+            supplier = order.get('supplier', {})
+            supplier_id = None
+            
+            if isinstance(supplier, dict):
+                supplier_id = supplier.get('id')
+            elif isinstance(supplier, str):
+                # Si supplier est une URL, extraire l'ID
+                if supplier.endswith('/'):
+                    supplier = supplier[:-1]
+                supplier_id = supplier.split('/')[-1]
+            
+            if supplier_id and supplier_id in supplier_cache:
+                supplier_info = supplier_cache[supplier_id]
+                # Ajouter is_central au supplier de la commande
+                if isinstance(order.get('supplier'), dict):
+                    order['supplier']['is_central'] = supplier_info.get('is_central', False)
+                    enriched_count += 1
+        
+        logger.info(f"   ✅ {enriched_count} commande(s) enrichie(s) avec is_central")
+        return orders
+
     def count_total_records(self, base_url, shop_id, page_size=1000):
         """Compte le nombre total de commandes réassort disponibles"""
         try:
@@ -262,6 +363,7 @@ class ProsumaAPICommandeReassortExtractor:
                 'page_size': page_size,
                 'page': 1,
                 'is_external': 'true',
+                'is_direct': 'false',  # Exclure les commandes directes pour ne garder que les réassort
                 'date_0': self.start_date.strftime('%Y-%m-%dT00:00:00'),
                 'date_1': self.end_date.strftime('%Y-%m-%dT23:59:59')
             }
@@ -307,12 +409,19 @@ class ProsumaAPICommandeReassortExtractor:
                 'shop': shop_id,
                 'page_size': page_size,
                 'is_external': 'true',
+                'is_direct': 'false',  # Exclure les commandes directes pour ne garder que les réassort
                 'date_0': self.start_date.strftime('%Y-%m-%dT00:00:00'),
                 'date_1': self.end_date.strftime('%Y-%m-%dT23:59:59')
             }
             if self.status_filter and self.status_filter.lower() == 'en attente de livraison':
                 params['is_awaiting_delivery'] = 'true'
                 logger.info(f"Filtre API: is_awaiting_delivery=true")
+            
+            logger.info(f"🔍 Filtres API appliqués:")
+            logger.info(f"   - is_external: true (commandes externes)")
+            logger.info(f"   - is_direct: false (exclure les commandes directes)")
+            if self.status_filter:
+                logger.info(f"   - status: {self.status_filter}")
             
             all_orders = []
             page = 1
@@ -340,6 +449,64 @@ class ProsumaAPICommandeReassortExtractor:
                     break
                 
                 page += 1
+            
+            # Enrichir les commandes avec les informations complètes des fournisseurs
+            all_orders = self.enrich_orders_with_supplier_info(base_url, all_orders)
+            
+            # Filtrage de sécurité : utiliser supplier.is_central pour identifier les réassort
+            # Selon la documentation API: is_central=True = fournisseur centrale = réassort
+            original_count = len(all_orders)
+            filtered_orders = []
+            direct_orders_excluded = 0
+            
+            # Analyser la première commande pour voir la structure
+            if all_orders:
+                first_order = all_orders[0]
+                supplier = first_order.get('supplier', {})
+                has_supplier = isinstance(supplier, dict) and supplier
+                has_is_central = has_supplier and 'is_central' in supplier
+                
+                logger.info(f"🔍 Analyse des champs API:")
+                logger.info(f"   - supplier présent: {'✅ OUI' if has_supplier else '❌ NON'}")
+                if has_supplier:
+                    logger.info(f"   - supplier.is_central présent: {'✅ OUI' if has_is_central else '❌ NON'}")
+                    if has_is_central:
+                        logger.info(f"   - Valeur supplier.is_central: {supplier.get('is_central')}")
+                
+                if has_is_central:
+                    # Le champ is_central existe, on peut filtrer strictement
+                    for order in all_orders:
+                        supplier = order.get('supplier', {})
+                        if isinstance(supplier, dict):
+                            is_central = supplier.get('is_central', False)
+                            
+                            # Les réassort sont les commandes avec supplier.is_central=True
+                            if is_central:
+                                filtered_orders.append(order)
+                            else:
+                                direct_orders_excluded += 1
+                                logger.debug(f"❌ Commande directe exclue: {order.get('reference', order.get('id', 'N/A'))} (supplier.is_central=False)")
+                        else:
+                            # Pas de fournisseur, exclure par sécurité
+                            direct_orders_excluded += 1
+                            logger.debug(f"❌ Commande sans fournisseur exclue: {order.get('reference', order.get('id', 'N/A'))}")
+                else:
+                    # Le champ is_central n'existe toujours pas après enrichissement
+                    logger.warning(f"⚠️⚠️⚠️ ATTENTION: Le champ supplier.is_central n'existe toujours pas après enrichissement ⚠️⚠️⚠️")
+                    logger.warning(f"   On fait confiance au filtre API (is_external=true, is_direct=false)")
+                    logger.warning(f"   Toutes les {original_count} commandes sont acceptées comme réassort")
+                    filtered_orders = all_orders.copy()
+            
+            all_orders = filtered_orders
+            filtered_count = len(all_orders)
+            
+            if direct_orders_excluded > 0:
+                logger.warning(f"⚠️⚠️⚠️ FILTRE DE SÉCURITÉ: {direct_orders_excluded} commande(s) directe(s) exclue(s) ⚠️⚠️⚠️")
+                logger.warning(f"   Le filtre API n'a pas fonctionné correctement.")
+                logger.warning(f"   Filtrage manuel strict: {original_count} -> {filtered_count} commandes réassort")
+                logger.warning(f"   Critère: supplier.is_central=True (fournisseur centrale)")
+            elif original_count > 0:
+                logger.info(f"✅✅✅ Filtre de sécurité: {filtered_count} commandes réassort validées (supplier.is_central=True)")
             
             # Filtrage post-récupération si nécessaire (seulement pour les filtres autres que "en attente de livraison")
             # Le filtre "en attente de livraison" est déjà appliqué via le paramètre API is_awaiting_delivery
@@ -425,7 +592,7 @@ class ProsumaAPICommandeReassortExtractor:
         filename = f'export_commande_reassort_{shop_code}_{timestamp}.csv'
         local_filepath = os.path.join(local_export_dir, filename)
         
-        # En-têtes CSV exacts demandés par l'utilisateur
+        # En-têtes CSV exacts demandés par l'utilisateur + colonnes de vérification
         fieldnames = [
             "id",
             "Magasin", 
@@ -461,7 +628,10 @@ class ProsumaAPICommandeReassortExtractor:
             "A.P.E.",
             "SIRET",
             "SIREN",
-            "Historique"
+            "Historique",
+            "Type commande",  # Nouvelle colonne pour identifier le type
+            "supplier.is_central",  # Colonne de vérification (fournisseur centrale)
+            "Fournisseur centrale"  # Colonne de vérification (réassort)
         ]
         
         try:
@@ -471,6 +641,17 @@ class ProsumaAPICommandeReassortExtractor:
                 writer.writeheader()
                 
                 for order in orders:
+                    # Déterminer le type de commande basé sur supplier.is_central
+                    supplier = order.get('supplier', {})
+                    is_central = False
+                    if isinstance(supplier, dict):
+                        is_central = supplier.get('is_central', False)
+                    
+                    if is_central:
+                        type_commande = "RÉASSORT"
+                    else:
+                        type_commande = "DIRECTE"
+                    
                     # Préparer les données pour l'export avec mapping complet
                     row = {
                         "id": order.get('id', ''),
@@ -507,7 +688,10 @@ class ProsumaAPICommandeReassortExtractor:
                         "A.P.E.": order.get('ape_code', ''),
                         "SIRET": order.get('siret_number', ''),
                         "SIREN": order.get('siren_number', ''),
-                        "Historique": order.get('history', '')
+                        "Historique": order.get('history', ''),
+                        "Type commande": type_commande,
+                        "supplier.is_central": "OUI" if is_central else "NON",
+                        "Fournisseur centrale": "OUI" if is_central else "NON"
                     }
                     writer.writerow(row)
             
@@ -517,7 +701,12 @@ class ProsumaAPICommandeReassortExtractor:
             
             # Copier vers le réseau si le chemin réseau est disponible
             if network_path:
-                network_filepath = os.path.join(network_path, filename)
+                # Utiliser os.path.join mais corriger pour les chemins UNC Windows
+                if network_path.startswith('\\\\'):
+                    # Chemin UNC, utiliser directement la concaténation avec backslash
+                    network_filepath = f"{network_path}\\{filename}" if not network_path.endswith('\\') else f"{network_path}{filename}"
+                else:
+                    network_filepath = os.path.join(network_path, filename)
                 try:
                     # Vérifier que le dossier réseau existe
                     if not os.path.exists(network_path):
@@ -531,17 +720,57 @@ class ProsumaAPICommandeReassortExtractor:
                             return local_filepath
                     
                     # Copier le fichier
-                    shutil.copy2(local_filepath, network_filepath)
+                    logger.info(f"📋 Tentative de copie vers: {network_filepath}")
+                    try:
+                        shutil.copy2(local_filepath, network_filepath)
+                        logger.info(f"✅ Commande copy2 exécutée sans erreur")
+                    except Exception as copy_ex:
+                        logger.error(f"❌❌❌ ERREUR LORS DE LA COPIE ❌❌❌")
+                        logger.error(f"   Exception: {copy_ex}")
+                        logger.error(f"   Type: {type(copy_ex).__name__}")
+                        raise
                     
-                    # Vérifier que la copie a réussi
-                    if os.path.exists(network_filepath):
-                        file_size = os.path.getsize(network_filepath)
+                    # Attendre un peu pour que Windows synchronise
+                    time.sleep(0.5)
+                    
+                    # Vérifier que la copie a réussi avec plusieurs méthodes
+                    file_exists = os.path.exists(network_filepath)
+                    file_readable = False
+                    file_size_network = 0
+                    file_size_local = os.path.getsize(local_filepath)
+                    
+                    if file_exists:
+                        try:
+                            file_size_network = os.path.getsize(network_filepath)
+                            # Essayer d'ouvrir le fichier en lecture pour vérifier qu'il est accessible
+                            with open(network_filepath, 'r', encoding='utf-8-sig') as f:
+                                f.read(1)  # Lire au moins 1 caractère
+                            file_readable = True
+                        except Exception as read_ex:
+                            logger.warning(f"⚠️ Le fichier existe mais n'est pas lisible: {read_ex}")
+                    
+                    if file_exists and file_readable and file_size_network == file_size_local:
                         logger.info(f"✅✅✅ FICHIER COPIÉ SUR LE RÉSEAU AVEC SUCCÈS ✅✅✅")
                         logger.info(f"   📁 Chemin réseau: {network_filepath}")
-                        logger.info(f"   📊 Taille: {file_size:,} octets")
+                        logger.info(f"   📊 Taille locale: {file_size_local:,} octets")
+                        logger.info(f"   📊 Taille réseau: {file_size_network:,} octets")
+                        logger.info(f"   ✅ Fichier vérifié et accessible")
+                        logger.info(f"📁 Fichier local conservé dans EXPORT: {local_filepath}")
+                        # IMPORTANT: Retourner le chemin réseau si la copie a réussi
+                        return network_filepath
+                    elif file_exists:
+                        logger.warning(f"⚠️⚠️⚠️ FICHIER COPIÉ MAIS PROBLÈME DE VÉRIFICATION ⚠️⚠️⚠️")
+                        logger.warning(f"   📁 Chemin réseau: {network_filepath}")
+                        logger.warning(f"   📊 Taille locale: {file_size_local:,} octets")
+                        logger.warning(f"   📊 Taille réseau: {file_size_network:,} octets")
+                        logger.warning(f"   ⚠️ Fichier existe mais peut ne pas être accessible")
+                        logger.info(f"📁 Fichier local conservé: {local_filepath}")
+                        return local_filepath
                     else:
                         logger.error(f"❌❌❌ LE FICHIER N'EXISTE PAS APRÈS LA COPIE ❌❌❌")
                         logger.error(f"   Chemin attendu: {network_filepath}")
+                        logger.error(f"   Vérification os.path.exists(): {file_exists}")
+                        logger.error(f"   Taille locale: {file_size_local:,} octets")
                         logger.info(f"📁 Fichier conservé uniquement localement: {local_filepath}")
                         return local_filepath
                         
@@ -557,10 +786,10 @@ class ProsumaAPICommandeReassortExtractor:
                 logger.warning(f"⚠️ Pas de chemin réseau disponible, fichier conservé uniquement localement")
                 return local_filepath
             
-            # Ne pas supprimer le fichier local, le garder dans EXPORT
+            # Si on arrive ici, la copie réseau a échoué ou n'a pas été tentée
+            # Retourner le chemin local
             logger.info(f"📁 Fichier local conservé dans EXPORT: {local_filepath}")
-            
-            return network_filepath if network_path and os.path.exists(os.path.join(network_path, filename)) else local_filepath
+            return local_filepath
             
         except Exception as e:
             logger.error(f"❌ Erreur lors de l'export CSV: {e}")
@@ -744,3 +973,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
