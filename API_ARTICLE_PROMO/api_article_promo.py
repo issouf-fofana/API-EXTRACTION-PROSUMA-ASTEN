@@ -52,6 +52,10 @@ def setup_logging(log_dir, api_name):
     root_logger.addHandler(stream_handler)
     root_logger.setLevel(logging.INFO)
     
+    # Définir les permissions pour permettre à tous les utilisateurs d'écrire
+    from utils import set_log_file_permissions
+    set_log_file_permissions(log_file)
+    
     return logging.getLogger(__name__)
 
 class ProsumaAPIArticlePromoExtractor:

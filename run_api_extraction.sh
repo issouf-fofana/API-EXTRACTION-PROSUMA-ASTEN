@@ -1,10 +1,112 @@
 #!/bin/bash
 
-# Configuration
-# Chemin absolu du dossier du script
-PROJECT_PATH="$(cd "$(dirname "$0")" && pwd)"
-# Exécuter depuis le projet local (évite les chemins /Volumes sous Windows)
-NETWORK_PROJECT="$PROJECT_PATH"
+# ============================================================================
+# Configuration - Exécution depuis le réseau partagé
+# Ce script peut être placé n'importe où (ex: Bureau)
+# Il exécute le code depuis le dossier réseau partagé
+# ============================================================================
+
+# Fonction pour définir la taille du terminal (Windows uniquement)
+# Taille fixe: 80 colonnes × 40 lignes (non redimensionnable)
+set_terminal_size() {
+    if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" || "$OSTYPE" == "win32" ]] || [[ -n "$MSYSTEM" ]]; then
+        # Windows : définir la taille du terminal
+        # Colonnes: 80, Lignes: 40 (taille maximale et fixe)
+        
+        # Méthode 1: PowerShell (pour console Windows native)
+        powershell -Command "\$Host.UI.RawUI.WindowSize = New-Object System.Management.Automation.Host.Size(80, 40); \$Host.UI.RawUI.BufferSize = New-Object System.Management.Automation.Host.Size(80, 9999); \$Host.UI.RawUI.MaxWindowSize = New-Object System.Management.Automation.Host.Size(80, 40); \$Host.UI.RawUI.MaxPhysicalWindowSize = New-Object System.Management.Automation.Host.Size(80, 40)" 2>/dev/null || true
+        
+        # Méthode 2: mode (pour CMD) - définit la taille et limite le redimensionnement
+        mode con: cols=80 lines=40 2>/dev/null || true
+        
+        # Méthode 3: Pour Git Bash, utiliser resize si disponible
+        if command -v resize &> /dev/null; then
+            resize -s 40 80 2>/dev/null || true
+        fi
+        
+        # Méthode 4: Pour Git Bash, utiliser printf avec des codes ANSI
+        # Code ANSI pour définir la taille: ESC[8;height;widtht
+        printf '\033[8;40;80t' 2>/dev/null || true
+        
+        # Méthode 5: Essayer de désactiver le redimensionnement via PowerShell
+        powershell -Command "[Console]::TreatControlCAsInput = \$false; try { \$hwnd = (Get-Process -Id \$PID).MainWindowHandle; if (\$hwnd -ne 0) { Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class Win32 { [DllImport(\"user32.dll\")] public static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong); [DllImport(\"user32.dll\")] public static extern int GetWindowLong(IntPtr hWnd, int nIndex); public static readonly int GWL_STYLE = -16; public static readonly int WS_SIZEBOX = 0x00040000; }'; \$style = [Win32]::GetWindowLong(\$hwnd, [Win32]::GWL_STYLE); \$newStyle = \$style -band (-bnot [Win32]::WS_SIZEBOX); [Win32]::SetWindowLong(\$hwnd, [Win32]::GWL_STYLE, \$newStyle) } } catch {}" 2>/dev/null || true
+    fi
+}
+
+# Fonction pour maintenir la taille du terminal (appelée périodiquement)
+# Force la taille à 80×40 et empêche le redimensionnement
+maintain_terminal_size() {
+    if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" || "$OSTYPE" == "win32" ]] || [[ -n "$MSYSTEM" ]]; then
+        # Redéfinir la taille silencieusement à chaque fois
+        printf '\033[8;40;80t' 2>/dev/null || true
+        
+        # Réappliquer via mode si disponible
+        mode con: cols=80 lines=40 2>/dev/null || true
+    fi
+}
+
+# Variable pour gérer l'interruption
+INTERRUPTED=false
+
+# Fonction pour gérer l'interruption (Ctrl+C)
+handle_interrupt() {
+    # Ignorer les interruptions multiples rapides
+    if [ "$INTERRUPTED" = "true" ]; then
+        return
+    fi
+    
+    INTERRUPTED=true
+    echo
+    echo
+    echo "⚠️  INTERRUPTION DÉTECTÉE (Ctrl+C)"
+    echo
+    read -p "Voulez-vous vraiment arrêter l'exécution ? (O/N): " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[OoYy]$ ]]; then
+        echo "🛑 Arrêt de l'exécution..."
+        if [ -n "$VIRTUAL_ENV" ]; then
+            deactivate 2>/dev/null || true
+        fi
+        exit 130
+    else
+        echo "✅ Continuation de l'exécution..."
+        INTERRUPTED=false
+        # Réactiver le trap
+        trap 'handle_interrupt' INT
+        return
+    fi
+}
+
+# Définir le trap pour intercepter Ctrl+C
+trap 'handle_interrupt' INT
+
+# Définir la taille du terminal au démarrage
+set_terminal_size
+
+# Chemin du dossier réseau partagé (code source)
+# Format Windows UNC: \\10.0.70.169\share\FOFANA\Etats Natacha\SCRIPT\EXTRACTION_PROSUMA
+NETWORK_SHARE="//10.0.70.169/share/FOFANA/Etats Natacha/SCRIPT/EXTRACTION_PROSUMA"
+
+# Convertir le chemin réseau selon l'OS
+if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" || "$OSTYPE" == "win32" ]] || [[ -n "$MSYSTEM" ]]; then
+    # Windows (Git Bash, Cygwin, MSYS2)
+    # Essayer plusieurs formats de chemins UNC
+    if [ -d "//10.0.70.169/share/FOFANA/Etats Natacha/SCRIPT/EXTRACTION_PROSUMA" ] 2>/dev/null; then
+        PROJECT_PATH="//10.0.70.169/share/FOFANA/Etats Natacha/SCRIPT/EXTRACTION_PROSUMA"
+    elif [ -d "\\\\10.0.70.169\\share\\FOFANA\\Etats Natacha\\SCRIPT\\EXTRACTION_PROSUMA" ] 2>/dev/null; then
+        PROJECT_PATH="\\\\10.0.70.169\\share\\FOFANA\\Etats Natacha\\SCRIPT\\EXTRACTION_PROSUMA"
+    elif [ -d "/c/Users/Public/EXTRACTION_PROSUMA" ] 2>/dev/null; then
+        PROJECT_PATH="/c/Users/Public/EXTRACTION_PROSUMA"
+    else
+        # Utiliser le chemin UNC directement (sera testé plus tard)
+        PROJECT_PATH="//10.0.70.169/share/FOFANA/Etats Natacha/SCRIPT/EXTRACTION_PROSUMA"
+    fi
+else
+    # macOS/Linux - utiliser le chemin tel quel
+    PROJECT_PATH="$NETWORK_SHARE"
+fi
+
+# Environnement virtuel local (créé sur chaque PC)
 ENV_NAME="env_Api_Extraction_Alien"
 ENV_PATH="$HOME/$ENV_NAME"
 PYTHON_MIN_VERSION="3.8"
@@ -13,32 +115,126 @@ echo "============================================================"
 echo "           API EXTRACTION PROSUMA - EXTRACTEUR UNIFIÉ"
 echo "============================================================"
 echo
+echo "📂 Chemin réseau partagé: $PROJECT_PATH"
+echo
 
-# Vérifier si Python est installé (python3 ou python)
-if command -v python3 &> /dev/null; then
-    PY=python3
-elif command -v python &> /dev/null; then
-    PY=python
-else
-    echo "❌ Python n'est pas installé ou pas dans le PATH"
-    echo "   Veuillez installer Python 3.8+ depuis https://python.org"
+# Vérifier que le dossier réseau est accessible
+echo "🔍 Vérification de l'accessibilité du dossier réseau..."
+if [ ! -d "$PROJECT_PATH" ] 2>/dev/null; then
+    echo "❌ ERREUR: Le dossier réseau partagé n'est pas accessible"
+    echo "   Chemin testé: $PROJECT_PATH"
+    echo
+    echo "💡 Solutions possibles:"
+    echo "   1. Vérifiez que le réseau est accessible"
+    echo "   2. Vérifiez que le chemin réseau est correct"
+    echo "   3. Sur Windows, assurez-vous que le lecteur réseau est mappé"
+    echo "   4. Vérifiez vos permissions d'accès au réseau"
+    echo
+    echo "⏸️  Appuyez sur une touche pour fermer..."
+    read -n 1 -s
     exit 1
 fi
 
-# Vérifier la version de Python
+echo "✅ Dossier réseau partagé accessible: $PROJECT_PATH"
+echo
+
+# Vérifier si Python est installé (python3 ou python)
+# Sur Windows, privilégier "python", sur autres OS privilégier "python3"
+echo "🔍 Recherche de Python..."
+if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" || "$OSTYPE" == "win32" ]] || [[ -n "$MSYSTEM" ]]; then
+    # Windows : chercher d'abord "python", puis "python3"
+    if command -v python &> /dev/null; then
+        PY=python
+        echo "   ✅ Python trouvé (Windows)"
+    elif command -v python3 &> /dev/null; then
+        PY=python3
+        echo "   ✅ Python3 trouvé (Windows)"
+    else
+        echo "❌ Python n'est pas installé ou pas dans le PATH"
+        echo "   Veuillez installer Python 3.8+ depuis https://python.org"
+        echo
+        echo "⏸️  Appuyez sur une touche pour fermer..."
+        read -n 1 -s
+        exit 1
+    fi
+else
+    # macOS/Linux : chercher d'abord "python3", puis "python"
+    if command -v python3 &> /dev/null; then
+        PY=python3
+        echo "   ✅ Python3 trouvé"
+    elif command -v python &> /dev/null; then
+        PY=python
+        echo "   ✅ Python trouvé"
+    else
+        echo "❌ Python n'est pas installé ou pas dans le PATH"
+        echo "   Veuillez installer Python 3.8+ depuis https://python.org"
+        echo
+        echo "⏸️  Appuyez sur une touche pour fermer..."
+        read -n 1 -s
+        exit 1
+    fi
+fi
+
+# Vérifier que Python fonctionne et obtenir la version
+echo "🔍 Vérification de la version de Python..."
+if ! $PY --version &> /dev/null; then
+    echo "❌ Erreur: Impossible d'exécuter $PY"
+    echo "   Vérifiez que Python est correctement installé"
+    echo
+    echo "⏸️  Appuyez sur une touche pour fermer..."
+    read -n 1 -s
+    exit 1
+fi
+
 PYTHON_VERSION=$($PY --version 2>&1 | cut -d' ' -f2)
+if [ -z "$PYTHON_VERSION" ]; then
+    echo "❌ Erreur: Impossible de déterminer la version de Python"
+    echo
+    echo "⏸️  Appuyez sur une touche pour fermer..."
+    read -n 1 -s
+    exit 1
+fi
 echo "✅ Python $PYTHON_VERSION détecté"
+
+# Vérifier que c'est Python 3
+echo "🔍 Vérification que c'est Python 3..."
+PYTHON_MAJOR=$($PY -c "import sys; print(sys.version_info.major)" 2>/dev/null)
+if [ -z "$PYTHON_MAJOR" ] || [ "$PYTHON_MAJOR" != "3" ]; then
+    echo "❌ Erreur: Python 3 est requis, mais Python $PYTHON_MAJOR a été détecté"
+    echo "   Veuillez installer Python 3.8+ depuis https://python.org"
+    echo
+    echo "⏸️  Appuyez sur une touche pour fermer..."
+    read -n 1 -s
+    exit 1
+fi
+
+# Vérifier que le module venv est disponible
+echo "🔍 Vérification du module venv..."
+if ! $PY -m venv --help &> /dev/null; then
+    echo "❌ Erreur: Le module 'venv' n'est pas disponible"
+    echo "   Vérifiez que Python est correctement installé avec le module venv"
+    echo
+    echo "⏸️  Appuyez sur une touche pour fermer..."
+    read -n 1 -s
+    exit 1
+fi
 
 # Créer l'environnement virtuel s'il n'existe pas
 if [ ! -d "$ENV_PATH" ]; then
     echo
     echo "🔧 Création de l'environnement virtuel..."
-    $PY -m venv "$ENV_PATH"
-    if [ $? -ne 0 ]; then
+    echo "   Chemin: $ENV_PATH"
+    if $PY -m venv "$ENV_PATH" 2>&1; then
+        echo "✅ Environnement virtuel créé: $ENV_PATH"
+    else
         echo "❌ Erreur lors de la création de l'environnement virtuel"
+        echo "   Commande exécutée: $PY -m venv \"$ENV_PATH\""
+        echo "   Vérifiez les permissions et que le chemin est valide"
+        echo
+        echo "⏸️  Appuyez sur une touche pour fermer..."
+        read -n 1 -s
         exit 1
     fi
-    echo "✅ Environnement virtuel créé: $ENV_PATH"
 else
     echo "✅ Environnement virtuel existant trouvé: $ENV_PATH"
 fi
@@ -53,30 +249,87 @@ elif [ -f "$ENV_PATH/Scripts/activate" ]; then
     source "$ENV_PATH/Scripts/activate"
 else
     echo "❌ Fichier d'activation introuvable dans $ENV_PATH"
+    echo "   Fichiers recherchés:"
+    echo "   - $ENV_PATH/bin/activate"
+    echo "   - $ENV_PATH/Scripts/activate"
+    echo
+    echo "⏸️  Appuyez sur une touche pour fermer..."
+    read -n 1 -s
     exit 1
 fi
+
+# Vérifier que l'environnement virtuel est bien activé
+if [ -z "$VIRTUAL_ENV" ]; then
+    echo "⚠️  Attention: L'environnement virtuel ne semble pas être activé"
+    echo "   Tentative d'utilisation du Python de l'environnement virtuel directement..."
+    if [ -f "$ENV_PATH/bin/python" ]; then
+        PYTHON_CMD="$ENV_PATH/bin/python"
+    elif [ -f "$ENV_PATH/Scripts/python.exe" ]; then
+        PYTHON_CMD="$ENV_PATH/Scripts/python.exe"
+    else
+        echo "❌ Python de l'environnement virtuel introuvable"
+        echo "   Fichiers recherchés:"
+        echo "   - $ENV_PATH/bin/python"
+        echo "   - $ENV_PATH/Scripts/python.exe"
+        echo
+        echo "⏸️  Appuyez sur une touche pour fermer..."
+        read -n 1 -s
+        exit 1
+    fi
+else
+    PYTHON_CMD="python"
+    echo "✅ Environnement virtuel activé: $VIRTUAL_ENV"
+fi
+
+# Exporter PYTHON_CMD pour qu'il soit accessible dans les fonctions
+export PYTHON_CMD
 
 # Mettre à jour pip
 echo
 echo "📦 Mise à jour de pip..."
-$PY -m pip install --upgrade pip
+if ! $PYTHON_CMD -m pip install --upgrade pip --quiet 2>&1; then
+    echo "⚠️  Avertissement: Erreur lors de la mise à jour de pip"
+    echo "   Continuons quand même..."
+fi
 
-# S'assurer qu'on est bien à la racine du projet
-cd "$PROJECT_PATH"
+# S'assurer qu'on est bien à la racine du projet réseau
+echo "🔍 Changement vers le dossier réseau..."
+if ! cd "$PROJECT_PATH" 2>/dev/null; then
+    echo "❌ ERREUR: Impossible d'accéder au dossier réseau"
+    echo "   Chemin: $PROJECT_PATH"
+    echo "   Vérifiez que le réseau est accessible et que vous avez les permissions"
+    echo
+    echo "⏸️  Appuyez sur une touche pour fermer..."
+    read -n 1 -s
+    exit 1
+fi
+echo "✅ Répertoire changé vers: $(pwd)"
 
-# Installer ou mettre à jour les dépendances
+# Installer ou mettre à jour les dépendances depuis le réseau
 echo
 echo "📦 Installation/mise à jour des dépendances..."
-if [ -f "$NETWORK_PROJECT/requirements.txt" ]; then
-    pip install -r "$NETWORK_PROJECT/requirements.txt" --upgrade
-    if [ $? -ne 0 ]; then
+if [ -f "$PROJECT_PATH/requirements.txt" ]; then
+    echo "   Fichier requirements.txt trouvé"
+    if ! $PYTHON_CMD -m pip install -r "$PROJECT_PATH/requirements.txt" --upgrade --quiet 2>&1; then
         echo "❌ Erreur lors de l'installation des dépendances"
-        exit 1
+        echo "   Tentative de réessai avec affichage des erreurs..."
+        $PYTHON_CMD -m pip install -r "$PROJECT_PATH/requirements.txt" --upgrade
+        if [ $? -ne 0 ]; then
+            echo
+            echo "⏸️  Appuyez sur une touche pour fermer..."
+            read -n 1 -s
+            exit 1
+        fi
     fi
     echo "✅ Dépendances installées/mises à jour"
 else
-    echo "⚠️  Fichier requirements.txt non trouvé sur le réseau"
+    echo "⚠️  Fichier requirements.txt non trouvé dans $PROJECT_PATH"
+    echo "   Vérifiez que le dossier réseau contient tous les fichiers nécessaires"
+    echo "   Continuons quand même..."
 fi
+echo
+echo "✅ Initialisation terminée. Affichage du menu..."
+sleep 1
 
 # Fonction pour valider et demander une date
 ask_date() {
@@ -108,13 +361,14 @@ ask_dates() {
     echo "│                                                                              │"
     echo "│                    📅 CONFIGURATION DES DATES D'EXTRACTION                   │"
     echo "│                                                                              │"
-    echo "│    1. Aujourd'hui                                                           │"
-    echo "│    2. Hier                                                                  │"
-    echo "│    3. Dates par défaut (hier à aujourd'hui)                                 │"
-    echo "│    4. Dates personnalisées                                                  │"
+    echo "│    1. Aujourd'hui                                                            │"
+    echo "│    2. Hier                                                                   │"
+    echo "│    3. Dates par défaut (hier à aujourd'hui)                                  │"
+    echo "│    4. Dates personnalisées                                                   │"
     echo "│                                                                              │"
     echo "└──────────────────────────────────────────────────────────────────────────────┘"
     echo
+    maintain_terminal_size
     read -p "Choisissez une option (1-4): " date_choice
     
     case $date_choice in
@@ -128,8 +382,16 @@ ask_dates() {
         2)
             echo "✅ Utilisation de la date d'hier"
             export USE_DEFAULT_DATES="false"
-            export CUSTOM_START_DATE=$(date -v-1d +%Y-%m-%d)
-            export CUSTOM_END_DATE=$(date -v-1d +%Y-%m-%d)
+            # Calculer la date d'hier selon l'OS
+            if [[ "$OSTYPE" == "darwin"* ]]; then
+                # macOS
+                export CUSTOM_START_DATE=$(date -v-1d +%Y-%m-%d)
+                export CUSTOM_END_DATE=$(date -v-1d +%Y-%m-%d)
+            else
+                # Linux/Windows
+                export CUSTOM_START_DATE=$(date -d "yesterday" +%Y-%m-%d)
+                export CUSTOM_END_DATE=$(date -d "yesterday" +%Y-%m-%d)
+            fi
             export DATES_ALREADY_SET=true
             ;;
         3)
@@ -195,7 +457,12 @@ run_extraction() {
         echo "📅 Utilisation des dates déjà configurées"
     fi
     
-  cd "$PROJECT_PATH/$api_folder"
+  # Aller dans le dossier API sur le réseau
+  if ! cd "$PROJECT_PATH/$api_folder" 2>/dev/null; then
+    echo "❌ ERREUR: Impossible d'accéder au dossier $api_folder sur le réseau"
+    echo "   Chemin: $PROJECT_PATH/$api_folder"
+    return 1
+  fi
 
   # Proposer un filtre de statut pour les APIs Commandes
   case "$api_folder" in
@@ -206,16 +473,18 @@ run_extraction() {
 
   if [ "$wants_status_filter" = "true" ]; then
     echo
-    echo "┌──────────────────────────────────────────────────────────┐"
-    echo "│                 Filtre Statut des Commandes              │"
-    echo "│                                                          │"
-    echo "│   0. Tous les statuts (pas de filtre)                    │"
-    echo "│   1. en attente de livraison                             │"
-    echo "│   2. en préparation                                      │"
-    echo "│   3. complète                                            │"
-    echo "│   4. annulée                                             │"
-    echo "│                                                          │"
-    echo "└──────────────────────────────────────────────────────────┘"
+    echo "┌──────────────────────────────────────────────────────────────────────────────┐"
+    echo "│                                                                              │"
+    echo "│                 📊 FILTRE STATUT DES COMMANDES                               │"
+    echo "│                                                                              │"
+    echo "│    0. Tous les statuts (pas de filtre)                                       │"
+    echo "│    1. en attente de livraison                                                │"
+    echo "│    2. en préparation                                                        │"
+    echo "│    3. complète                                                               │"
+    echo "│    4. annulée                                                                │"
+    echo "│                                                                              │"
+    echo "└──────────────────────────────────────────────────────────────────────────────┘"
+    maintain_terminal_size
     read -p "Choisissez un statut (0-4): " status_choice
     case $status_choice in
       1) selected_status="en attente de livraison" ;;
@@ -238,22 +507,22 @@ run_extraction() {
         unset DATE_START
         unset DATE_END
         echo "🔧 Variables d'environnement: DATE_START=, DATE_END= (aucune date - extraction complète)"
-        python "$script_name"
+        $PYTHON_CMD "$script_name"
     elif [ "$USE_DEFAULT_DATES" = "false" ]; then
     echo "🔧 Variables d'environnement définies: DATE_START=$CUSTOM_START_DATE, DATE_END=$CUSTOM_END_DATE"
     if [ -n "$selected_status" ]; then
-      DATE_START="$CUSTOM_START_DATE" DATE_END="$CUSTOM_END_DATE" STATUT_COMMANDE="$selected_status" python "$script_name"
+      DATE_START="$CUSTOM_START_DATE" DATE_END="$CUSTOM_END_DATE" STATUT_COMMANDE="$selected_status" $PYTHON_CMD "$script_name"
     else
-      DATE_START="$CUSTOM_START_DATE" DATE_END="$CUSTOM_END_DATE" STATUT_COMMANDE="" python "$script_name"
+      DATE_START="$CUSTOM_START_DATE" DATE_END="$CUSTOM_END_DATE" STATUT_COMMANDE="" $PYTHON_CMD "$script_name"
     fi
     else
         # S'assurer que les variables ne sont pas définies pour utiliser les dates par défaut
         unset DATE_START
         unset DATE_END
     if [ -n "$selected_status" ]; then
-      STATUT_COMMANDE="$selected_status" python "$script_name"
+      STATUT_COMMANDE="$selected_status" $PYTHON_CMD "$script_name"
     else
-      STATUT_COMMANDE="" python "$script_name"
+      STATUT_COMMANDE="" $PYTHON_CMD "$script_name"
     fi
     fi
 }
@@ -269,13 +538,15 @@ show_alien_logo() {
     echo "│                   ██║  ██║███████╗██║███████╗██║ ╚████║                      │"
     echo "│                   ╚═╝  ╚═╝╚══════╝╚═╝╚══════╝╚═╝  ╚═══╝                      │"
     echo "│                                                                              │"
-    echo "│                    🚀 API EXTRACTION BACK OFFICE ASTEN - MENU PRINCIPAL                │"
+    echo "│             API EXTRACTION BACK OFFICE ASTEN - MENU PRINCIPAL                │"
     echo "│                                                                              │"
     echo "└──────────────────────────────────────────────────────────────────────────────┘"
 }
 
 # Menu principal
 while true; do
+    # Maintenir la taille du terminal
+    maintain_terminal_size
     clear
     show_alien_logo
     echo
@@ -286,9 +557,9 @@ while true; do
     echo "│    1. Commandes Fournisseurs (Toutes)                                       │"
     echo "│    2. Commandes Directes                                                    │"
     echo "│    3. Commandes Réassort                                                    │"
-    echo "│    4. Base Articles (Tous les articles)                                    │
-          │    5. Articles avec prix promo                                             │
-          │    6. Promotions                                                            │"
+    echo "│    4. Base Articles (Tous les articles)                                     │"
+    echo "│    5. Articles avec prix promo                                              │"
+    echo "│    6. Promotions                                                            │"
     echo "│    7. Produits Non Trouvés                                                  │"
     echo "│    8. Commandes par Thème/Promotion                                         │"
     echo "│    9. Réception de Commandes                                                │"
@@ -305,6 +576,7 @@ while true; do
     echo
   
     
+    maintain_terminal_size
     read -p "Choisissez une option (1-13, A, R, Q): " choice
 
     case $choice in
@@ -424,6 +696,7 @@ while true; do
     echo
     echo "============================================================"
     echo
+    maintain_terminal_size
     read -p "Appuyez sur Entrée pour continuer ou 'Q' pour quitter: " continue
     if [[ $continue == "Q" || $continue == "q" ]]; then
         break
@@ -464,4 +737,9 @@ echo "   2. Naviguez vers : /Volumes/SHARE/FOFANA/EXPORT/"
 echo "   3. Naviguez vers le dossier de l'extraction souhaitée"
 echo
 echo "👋 Au revoir ! Ce script a été créé par Alien pour l'extraction des APIs Prosuma."
-deactivate
+if [ -n "$VIRTUAL_ENV" ]; then
+    deactivate
+fi
+echo
+echo "⏸️  Appuyez sur une touche pour fermer..."
+read -n 1 -s

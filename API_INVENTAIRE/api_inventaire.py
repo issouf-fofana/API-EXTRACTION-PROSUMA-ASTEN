@@ -62,23 +62,29 @@ class ProsumaAPIInventaireExtractor:
         """Configure le logging avec fichier sur le réseau"""
         log_path = self.get_log_network_path()
         if log_path:
+            log_file = os.path.join(log_path, f'prosuma_api_inventaire.log')
             logging.basicConfig(
                 level=logging.INFO,
                 format='%(asctime)s - %(levelname)s - %(message)s',
                 handlers=[
-                    logging.FileHandler(os.path.join(log_path, f'prosuma_api_inventaire.log')),
+                    logging.FileHandler(log_file, encoding='utf-8'),
                     SafeStreamHandler()
                 ]
             )
         else:
+            log_file = f'prosuma_api_inventaire.log'
             logging.basicConfig(
                 level=logging.INFO,
                 format='%(asctime)s - %(levelname)s - %(message)s',
                 handlers=[
-                    logging.FileHandler(f'prosuma_api_inventaire.log'),
+                    logging.FileHandler(log_file, encoding='utf-8'),
                     SafeStreamHandler()
                 ]
             )
+        
+        # Définir les permissions pour permettre à tous les utilisateurs d'écrire
+        from utils import set_log_file_permissions
+        set_log_file_permissions(log_file)
         
         global logger
         logger = logging.getLogger(__name__)

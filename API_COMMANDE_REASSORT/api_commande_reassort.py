@@ -63,26 +63,70 @@ class ProsumaAPICommandeReassortExtractor:
 
     def setup_logging(self):
         """Configure le système de logging"""
-        # Créer le dossier de logs sur le réseau
+        # Essayer d'abord le dossier réseau, puis fallback local
+        log_file = None
         log_network_path = self.get_log_network_path()
-        if log_network_path:
-            log_file = os.path.join(log_network_path, f'api_commande_reassort_{datetime.now().strftime("%Y%m%d")}.log')
-        else:
-            # Fallback local
-            log_file = os.path.join(self.base_dir, f'api_commande_reassort_{datetime.now().strftime("%Y%m%d")}.log')
         
-        # Configuration du logging
-        logging.basicConfig(
-            level=logging.INFO,
-            format='%(asctime)s - %(levelname)s - %(message)s',
-            handlers=[
-                logging.FileHandler(log_file, encoding='utf-8'),
-                SafeStreamHandler()
-            ]
-        )
+        if log_network_path:
+            try:
+                # Vérifier que le dossier existe et est accessible
+                if os.path.exists(log_network_path) and os.access(log_network_path, os.W_OK):
+                    log_file = os.path.join(log_network_path, f'api_commande_reassort_{datetime.now().strftime("%Y%m%d")}.log')
+                    # Tester l'écriture
+                    try:
+                        test_file = os.path.join(log_network_path, '.test_write')
+                        with open(test_file, 'w') as f:
+                            f.write('test')
+                        os.remove(test_file)
+                    except (PermissionError, OSError):
+                        # Pas d'accès en écriture, utiliser le fallback local
+                        log_file = None
+                else:
+                    log_file = None
+            except Exception as e:
+                # Erreur d'accès au réseau, utiliser le fallback local
+                log_file = None
+        
+        # Fallback local si le réseau n'est pas accessible
+        if not log_file:
+            # Créer un dossier LOG local s'il n'existe pas
+            local_log_dir = os.path.join(self.base_dir, 'LOG')
+            try:
+                if not os.path.exists(local_log_dir):
+                    os.makedirs(local_log_dir, exist_ok=True)
+                log_file = os.path.join(local_log_dir, f'api_commande_reassort_{datetime.now().strftime("%Y%m%d")}.log')
+            except Exception as e:
+                # Dernier recours : utiliser le dossier de base
+                log_file = os.path.join(self.base_dir, f'api_commande_reassort_{datetime.now().strftime("%Y%m%d")}.log')
+        
+        # Configuration du logging avec gestion d'erreur
+        try:
+            logging.basicConfig(
+                level=logging.INFO,
+                format='%(asctime)s - %(levelname)s - %(message)s',
+                handlers=[
+                    logging.FileHandler(log_file, encoding='utf-8'),
+                    SafeStreamHandler()
+                ]
+            )
+            
+            # Définir les permissions pour permettre à tous les utilisateurs d'écrire
+            from utils import set_log_file_permissions
+            set_log_file_permissions(log_file)
+            
+        except (PermissionError, OSError) as e:
+            # Si l'écriture échoue, utiliser seulement le stream handler
+            print(f"⚠️ Impossible d'écrire dans le fichier de log {log_file}: {e}")
+            print("⚠️ Les logs seront affichés uniquement dans la console")
+            logging.basicConfig(
+                level=logging.INFO,
+                format='%(asctime)s - %(levelname)s - %(message)s',
+                handlers=[SafeStreamHandler()]
+            )
         
         global logger
         logger = logging.getLogger(__name__)
+        logger.info(f"📝 Fichier de log: {log_file}")
 
     def setup_dates(self):
         """Configure les dates d'extraction"""

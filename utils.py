@@ -8,6 +8,8 @@ import json
 import logging
 import sys
 import io
+import subprocess
+import platform
 
 logger = logging.getLogger(__name__)
 
@@ -157,6 +159,102 @@ def create_network_folder(network_path):
         return True
     except Exception as e:
         logger.error(f"❌ Erreur lors de la création du dossier réseau {network_path}: {e}")
+        return False
+
+def set_log_file_permissions(log_file_path):
+    """Définit les permissions d'un fichier de log pour permettre à tous les utilisateurs d'écrire
+    
+    Sur Windows, utilise PowerShell ou icacls pour définir les permissions NTFS.
+    Sur Linux/Mac, utilise chmod pour donner les permissions d'écriture.
+    
+    Cette fonction est appelée automatiquement après la création de chaque fichier de log
+    pour s'assurer que tous les utilisateurs peuvent écrire dedans, même si le fichier
+    a été créé par un autre utilisateur.
+    
+    Args:
+        log_file_path: Chemin complet du fichier de log
+        
+    Returns:
+        bool: True si les permissions ont été définies avec succès, False sinon
+    """
+    if not log_file_path:
+        return False
+    
+    # Attendre un peu que le fichier soit créé (si nécessaire)
+    import time
+    max_attempts = 3
+    for attempt in range(max_attempts):
+        if os.path.exists(log_file_path):
+            break
+        time.sleep(0.1)
+    
+    if not os.path.exists(log_file_path):
+        # Le fichier n'existe pas encore, on essaiera plus tard
+        return False
+    
+    try:
+        if platform.system() == 'Windows':
+            # Sur Windows, utiliser PowerShell ou icacls pour définir les permissions NTFS
+            # Donner à Everyone les permissions de lecture et écriture
+            
+            # Méthode 1: PowerShell (plus fiable pour les chemins UNC)
+            # Échapper les backslashes et guillemets pour PowerShell
+            escaped_path = log_file_path.replace('\\', '\\\\').replace('"', '`"')
+            ps_command = f'''
+$file = "{escaped_path}"
+if (Test-Path $file) {{
+    try {{
+        $acl = Get-Acl $file
+        $permission = "Everyone", "Read,Write", "Allow"
+        $accessRule = New-Object System.Security.AccessControl.FileSystemAccessRule $permission
+        $acl.SetAccessRule($accessRule)
+        Set-Acl $file $acl
+        exit 0
+    }} catch {{
+        exit 1
+    }}
+}} else {{
+    exit 1
+}}
+'''
+            try:
+                result = subprocess.run(
+                    ['powershell', '-ExecutionPolicy', 'Bypass', '-Command', ps_command],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                    creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0
+                )
+                if result.returncode == 0:
+                    return True
+            except (subprocess.TimeoutExpired, subprocess.SubprocessError, FileNotFoundError):
+                pass
+            
+            # Méthode 2: icacls (fallback si PowerShell échoue)
+            try:
+                # Convertir le chemin pour icacls (échapper les backslashes)
+                escaped_path = log_file_path.replace('\\', '\\\\')
+                icacls_command = ['icacls', escaped_path, '/grant', 'Everyone:(R,W)', '/Q']
+                result = subprocess.run(
+                    icacls_command,
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                    creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0
+                )
+                return result.returncode == 0
+            except (subprocess.TimeoutExpired, subprocess.SubprocessError, FileNotFoundError):
+                return False
+        else:
+            # Sur Linux/Mac, utiliser chmod pour donner les permissions d'écriture à tous
+            try:
+                # Donner les permissions rw-rw-rw- (666)
+                os.chmod(log_file_path, 0o666)
+                return True
+            except (OSError, PermissionError):
+                return False
+    except Exception:
+        # Ignorer toutes les erreurs silencieusement pour ne pas interrompre l'exécution
         return False
 
 

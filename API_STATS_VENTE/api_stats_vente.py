@@ -94,6 +94,10 @@ class ProsumaAPIStatsventeExtractor:
         root_logger.addHandler(file_handler)
         root_logger.addHandler(stream_handler)
         
+        # Définir les permissions pour permettre à tous les utilisateurs d'écrire
+        from utils import set_log_file_permissions
+        set_log_file_permissions(log_file)
+        
         global logger
         logger = logging.getLogger(__name__)
 
