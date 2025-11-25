@@ -331,17 +331,40 @@ echo
 echo "✅ Initialisation terminée. Affichage du menu..."
 sleep 1
 
+# Fonction pour afficher les commandes de navigation
+show_navigation_commands() {
+    echo
+    echo "┌──────────────────────────────────────────────────────────────────────────────┐"
+    echo "│  💡 COMMANDES: [ALIEN] = Quitter | [X] = Retour                              │"
+    echo "└──────────────────────────────────────────────────────────────────────────────┘"
+}
+
 # Fonction pour valider et demander une date
 ask_date() {
     local prompt="$1"
     local date_var="$2"
     while true; do
-        read -p "$prompt (YYYY-MM-DD): " input_date
+        maintain_terminal_size
+        show_navigation_commands
+        read -p "$prompt (YYYY-MM-DD) ou [X] pour retour, [ALIEN] pour quitter: " input_date
+        
+        # Vérifier les commandes spéciales
+        if [[ "$input_date" =~ ^[Aa][Ll][Ii][Ee][Nn]$ ]]; then
+            echo "🛑 Arrêt du script..."
+            if [ -n "$VIRTUAL_ENV" ]; then
+                deactivate 2>/dev/null || true
+            fi
+            exit 0
+        fi
+        if [[ "$input_date" =~ ^[Xx]$ ]]; then
+            return 1
+        fi
+        
         if [[ $input_date =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
             # Vérifier que la date est valide (compatible macOS et Linux)
             if date -j -f "%Y-%m-%d" "$input_date" >/dev/null 2>&1 || date -d "$input_date" >/dev/null 2>&1; then
                 eval "$date_var='$input_date'"
-                break
+                return 0
             else
                 echo "❌ Date invalide. Veuillez ressaisir une date valide."
             fi
@@ -351,85 +374,164 @@ ask_date() {
     done
 }
 
-# Variables globales pour mémoriser les dates
-DATES_ALREADY_SET=false
-
 # Fonction pour demander les dates
 ask_dates() {
-    echo
-    echo "┌──────────────────────────────────────────────────────────────────────────────┐"
-    echo "│                                                                              │"
-    echo "│                    📅 CONFIGURATION DES DATES D'EXTRACTION                   │"
-    echo "│                                                                              │"
-    echo "│    1. Aujourd'hui                                                            │"
-    echo "│    2. Hier                                                                   │"
-    echo "│    3. Dates par défaut (hier à aujourd'hui)                                  │"
-    echo "│    4. Dates personnalisées                                                   │"
-    echo "│                                                                              │"
-    echo "└──────────────────────────────────────────────────────────────────────────────┘"
-    echo
-    maintain_terminal_size
-    read -p "Choisissez une option (1-4): " date_choice
-    
-    case $date_choice in
-        1)
-            echo "✅ Utilisation de la date d'aujourd'hui"
-            export USE_DEFAULT_DATES="false"
-            export CUSTOM_START_DATE=$(date +%Y-%m-%d)
-            export CUSTOM_END_DATE=$(date +%Y-%m-%d)
-            export DATES_ALREADY_SET=true
-            ;;
-        2)
-            echo "✅ Utilisation de la date d'hier"
-            export USE_DEFAULT_DATES="false"
-            # Calculer la date d'hier selon l'OS
-            if [[ "$OSTYPE" == "darwin"* ]]; then
-                # macOS
-                export CUSTOM_START_DATE=$(date -v-1d +%Y-%m-%d)
-                export CUSTOM_END_DATE=$(date -v-1d +%Y-%m-%d)
-            else
-                # Linux/Windows
-                export CUSTOM_START_DATE=$(date -d "yesterday" +%Y-%m-%d)
-                export CUSTOM_END_DATE=$(date -d "yesterday" +%Y-%m-%d)
+    while true; do
+        clear
+        maintain_terminal_size
+        show_alien_logo
+        echo
+        echo "┌──────────────────────────────────────────────────────────────────────────────┐"
+        echo "│                                                                              │"
+        echo "│                    📅 CONFIGURATION DES DATES D'EXTRACTION                   │"
+        echo "│                                                                              │"
+        echo "│    1. Aujourd'hui                                                            │"
+        echo "│    2. Hier                                                                   │"
+        echo "│    3. Dates par défaut (hier à aujourd'hui)                                  │"
+        echo "│    4. Dates personnalisées                                                   │"
+        echo "│                                                                              │"
+        echo "└──────────────────────────────────────────────────────────────────────────────┘"
+        show_navigation_commands
+        read -p "Choisissez une option (1-4): " date_choice
+        
+        # Vérifier les commandes spéciales
+        if [[ "$date_choice" =~ ^[Aa][Ll][Ii][Ee][Nn]$ ]]; then
+            echo "🛑 Arrêt du script..."
+            if [ -n "$VIRTUAL_ENV" ]; then
+                deactivate 2>/dev/null || true
             fi
-            export DATES_ALREADY_SET=true
-            ;;
-        3)
-            echo "✅ Utilisation des dates par défaut (hier à aujourd'hui)"
-            export USE_DEFAULT_DATES="true"
-            export DATES_ALREADY_SET=true
-            ;;
-        4)
-            echo
-            echo "📅 Saisie des dates personnalisées :"
-            echo "   Format attendu : YYYY-MM-DD (ex: 2025-01-15)"
-            echo
-            
-            # Demander les dates avec validation
-            ask_date "Date de début" "start_date"
-            ask_date "Date de fin" "end_date"
-            
-            # Vérifier que la date de fin est après la date de début
-            if [[ "$start_date" > "$end_date" ]]; then
-                echo "❌ La date de fin doit être après la date de début."
-                echo "   Date de début: $start_date"
-                echo "   Date de fin: $end_date"
-                echo "   Utilisation des dates par défaut."
-                export USE_DEFAULT_DATES="true"
-            else
-                echo "✅ Dates personnalisées : $start_date à $end_date"
+            exit 0
+        fi
+        if [[ "$date_choice" =~ ^[Xx]$ ]]; then
+            return 1
+        fi
+        
+        case $date_choice in
+            1)
+                echo "✅ Utilisation de la date d'aujourd'hui"
                 export USE_DEFAULT_DATES="false"
-                export CUSTOM_START_DATE="$start_date"
-                export CUSTOM_END_DATE="$end_date"
+                export CUSTOM_START_DATE=$(date +%Y-%m-%d)
+                export CUSTOM_END_DATE=$(date +%Y-%m-%d)
+                export DATES_ALREADY_SET=true
+                return 0
+                ;;
+            2)
+                echo "✅ Utilisation de la date d'hier"
+                export USE_DEFAULT_DATES="false"
+                # Calculer la date d'hier selon l'OS
+                if [[ "$OSTYPE" == "darwin"* ]]; then
+                    # macOS
+                    export CUSTOM_START_DATE=$(date -v-1d +%Y-%m-%d)
+                    export CUSTOM_END_DATE=$(date -v-1d +%Y-%m-%d)
+                else
+                    # Linux/Windows
+                    export CUSTOM_START_DATE=$(date -d "yesterday" +%Y-%m-%d)
+                    export CUSTOM_END_DATE=$(date -d "yesterday" +%Y-%m-%d)
+                fi
+                export DATES_ALREADY_SET=true
+                return 0
+                ;;
+            3)
+                echo "✅ Utilisation des dates par défaut (hier à aujourd'hui)"
+                export USE_DEFAULT_DATES="true"
+                export DATES_ALREADY_SET=true
+                return 0
+                ;;
+            4)
+                echo
+                echo "📅 Saisie des dates personnalisées :"
+                echo "   Format attendu : YYYY-MM-DD (ex: 2025-01-15)"
+                echo
+                
+                # Demander les dates avec validation
+                if ! ask_date "Date de début" "start_date"; then
+                    continue
+                fi
+                if ! ask_date "Date de fin" "end_date"; then
+                    continue
+                fi
+                
+                # Vérifier que la date de fin est après la date de début
+                if [[ "$start_date" > "$end_date" ]]; then
+                    echo "❌ La date de fin doit être après la date de début."
+                    echo "   Date de début: $start_date"
+                    echo "   Date de fin: $end_date"
+                    echo "   Utilisation des dates par défaut."
+                    export USE_DEFAULT_DATES="true"
+                else
+                    echo "✅ Dates personnalisées : $start_date à $end_date"
+                    export USE_DEFAULT_DATES="false"
+                    export CUSTOM_START_DATE="$start_date"
+                    export CUSTOM_END_DATE="$end_date"
+                fi
+                export DATES_ALREADY_SET=true
+                return 0
+                ;;
+            *)
+                echo "❌ Option invalide. Veuillez choisir 1-4."
+                sleep 2
+                ;;
+        esac
+    done
+}
+
+# Fonction pour demander le filtre de statut pour les commandes
+# Retourne le statut sélectionné via variable globale SELECTED_STATUS_FILTER
+ask_status_filter() {
+    local api_name="$1"
+    SELECTED_STATUS_FILTER=""
+    
+    while true; do
+        clear
+        maintain_terminal_size
+        show_alien_logo
+        echo
+        echo "┌──────────────────────────────────────────────────────────────────────────────┐"
+        echo "│                                                                              │"
+        # Centrer le titre
+        title="📊 FILTRE STATUT DES COMMANDES - $api_name"
+        title_len=${#title}
+        padding=$(( (78 - title_len) / 2 ))
+        printf "│%*s%s%*s│\n" $padding "" "$title" $((78 - title_len - padding)) ""
+        echo "│                                                                              │"
+        echo "│    0. Tous les statuts (pas de filtre)                                       │"
+        echo "│    1. en attente de livraison                                                │"
+        echo "│    2. en préparation                                                         │"
+        echo "│    3. complète                                                               │"
+        echo "│    4. annulée                                                                │"
+        echo "│                                                                              │"
+        echo "└──────────────────────────────────────────────────────────────────────────────┘"
+        show_navigation_commands
+        read -p "Choisissez un statut (0-4): " status_choice
+        
+        # Vérifier les commandes spéciales
+        if [[ "$status_choice" =~ ^[Aa][Ll][Ii][Ee][Nn]$ ]]; then
+            echo "🛑 Arrêt du script..."
+            if [ -n "$VIRTUAL_ENV" ]; then
+                deactivate 2>/dev/null || true
             fi
-            export DATES_ALREADY_SET=true
-            ;;
-        *)
-            echo "❌ Option invalide. Utilisation des dates par défaut."
-            export USE_DEFAULT_DATES="true"
-            export DATES_ALREADY_SET=true
-            ;;
-    esac
+            exit 0
+        fi
+        if [[ "$status_choice" =~ ^[Xx]$ ]]; then
+            return 1
+        fi
+        
+        case $status_choice in
+            1) SELECTED_STATUS_FILTER="en attente de livraison" ;;
+            2) SELECTED_STATUS_FILTER="en préparation" ;;
+            3) SELECTED_STATUS_FILTER="complète" ;;
+            4) SELECTED_STATUS_FILTER="annulée" ;;
+            0|*) SELECTED_STATUS_FILTER="" ;;
+        esac
+        
+        if [ -n "$SELECTED_STATUS_FILTER" ]; then
+            echo "🧭 Filtre statut: $SELECTED_STATUS_FILTER"
+        else
+            echo "🧭 Filtre statut: aucun (tous)"
+        fi
+        
+        return 0
+    done
 }
 
 # Fonction pour exécuter une extraction
@@ -437,68 +539,17 @@ run_extraction() {
     local api_name="$1"
     local api_folder="$2"
     local script_name="$3"
-    local skip_date_prompt="${4:-false}"
-  local wants_status_filter=false
-  local selected_status=""
+    local selected_status="$4"
     
     echo
     echo "🚀 Lancement de l'extraction $api_name..."
     
-    # L'API BASE_ARTICLE ne nécessite pas de dates (récupère tous les articles)
-    if [ "$api_folder" = "API_BASE_ARTICLE" ]; then
-        echo "ℹ️  Extraction de TOUS les articles (sans filtre de date)"
-        skip_date_prompt="true"
+    # Aller dans le dossier API sur le réseau
+    if ! cd "$PROJECT_PATH/$api_folder" 2>/dev/null; then
+        echo "❌ ERREUR: Impossible d'accéder au dossier $api_folder sur le réseau"
+        echo "   Chemin: $PROJECT_PATH/$api_folder"
+        return 1
     fi
-    
-    # Demander les dates seulement si pas encore définies et si on n'est pas dans le mode "Extraire TOUT"
-    if [ "$DATES_ALREADY_SET" = "false" ] && [ "$skip_date_prompt" = "false" ]; then
-        ask_dates
-    elif [ "$DATES_ALREADY_SET" = "true" ] && [ "$skip_date_prompt" = "false" ]; then
-        echo "📅 Utilisation des dates déjà configurées"
-    fi
-    
-  # Aller dans le dossier API sur le réseau
-  if ! cd "$PROJECT_PATH/$api_folder" 2>/dev/null; then
-    echo "❌ ERREUR: Impossible d'accéder au dossier $api_folder sur le réseau"
-    echo "   Chemin: $PROJECT_PATH/$api_folder"
-    return 1
-  fi
-
-  # Proposer un filtre de statut pour les APIs Commandes
-  case "$api_folder" in
-    API_COMMANDE|API_COMMANDE_REASSORT|API_COMMANDE_DIRECTE)
-      wants_status_filter=true
-      ;;
-  esac
-
-  if [ "$wants_status_filter" = "true" ]; then
-    echo
-    echo "┌──────────────────────────────────────────────────────────────────────────────┐"
-    echo "│                                                                              │"
-    echo "│                 📊 FILTRE STATUT DES COMMANDES                               │"
-    echo "│                                                                              │"
-    echo "│    0. Tous les statuts (pas de filtre)                                       │"
-    echo "│    1. en attente de livraison                                                │"
-    echo "│    2. en préparation                                                        │"
-    echo "│    3. complète                                                               │"
-    echo "│    4. annulée                                                                │"
-    echo "│                                                                              │"
-    echo "└──────────────────────────────────────────────────────────────────────────────┘"
-    maintain_terminal_size
-    read -p "Choisissez un statut (0-4): " status_choice
-    case $status_choice in
-      1) selected_status="en attente de livraison" ;;
-      2) selected_status="en préparation" ;;
-      3) selected_status="complète" ;;
-      4) selected_status="annulée" ;;
-      *) selected_status="" ;;
-    esac
-    if [ -n "$selected_status" ]; then
-      echo "🧭 Filtre statut: $selected_status"
-    else
-      echo "🧭 Filtre statut: aucun (tous)"
-    fi
-  fi
     
     # Passer les variables d'environnement pour les dates
     # Pour l'API BASE_ARTICLE, ne pas passer de dates (récupère tous les articles)
@@ -507,23 +558,27 @@ run_extraction() {
         unset DATE_START
         unset DATE_END
         echo "🔧 Variables d'environnement: DATE_START=, DATE_END= (aucune date - extraction complète)"
-        $PYTHON_CMD "$script_name"
+        if [ -n "$selected_status" ]; then
+            STATUT_COMMANDE="$selected_status" $PYTHON_CMD "$script_name"
+        else
+            STATUT_COMMANDE="" $PYTHON_CMD "$script_name"
+        fi
     elif [ "$USE_DEFAULT_DATES" = "false" ]; then
-    echo "🔧 Variables d'environnement définies: DATE_START=$CUSTOM_START_DATE, DATE_END=$CUSTOM_END_DATE"
-    if [ -n "$selected_status" ]; then
-      DATE_START="$CUSTOM_START_DATE" DATE_END="$CUSTOM_END_DATE" STATUT_COMMANDE="$selected_status" $PYTHON_CMD "$script_name"
-    else
-      DATE_START="$CUSTOM_START_DATE" DATE_END="$CUSTOM_END_DATE" STATUT_COMMANDE="" $PYTHON_CMD "$script_name"
-    fi
+        echo "🔧 Variables d'environnement définies: DATE_START=$CUSTOM_START_DATE, DATE_END=$CUSTOM_END_DATE"
+        if [ -n "$selected_status" ]; then
+            DATE_START="$CUSTOM_START_DATE" DATE_END="$CUSTOM_END_DATE" STATUT_COMMANDE="$selected_status" $PYTHON_CMD "$script_name"
+        else
+            DATE_START="$CUSTOM_START_DATE" DATE_END="$CUSTOM_END_DATE" STATUT_COMMANDE="" $PYTHON_CMD "$script_name"
+        fi
     else
         # S'assurer que les variables ne sont pas définies pour utiliser les dates par défaut
         unset DATE_START
         unset DATE_END
-    if [ -n "$selected_status" ]; then
-      STATUT_COMMANDE="$selected_status" $PYTHON_CMD "$script_name"
-    else
-      STATUT_COMMANDE="" $PYTHON_CMD "$script_name"
-    fi
+        if [ -n "$selected_status" ]; then
+            STATUT_COMMANDE="$selected_status" $PYTHON_CMD "$script_name"
+        else
+            STATUT_COMMANDE="" $PYTHON_CMD "$script_name"
+        fi
     fi
 }
 
@@ -543,6 +598,47 @@ show_alien_logo() {
     echo "└──────────────────────────────────────────────────────────────────────────────┘"
 }
 
+# Fonction pour parser la sélection multiple
+parse_selection() {
+    local input="$1"
+    local -a selections
+    
+    # Séparer par virgule et nettoyer
+    IFS=',' read -ra selections <<< "$input"
+    
+    # Valider chaque sélection
+    local -a valid_selections
+    for sel in "${selections[@]}"; do
+        sel=$(echo "$sel" | tr -d '[:space:]')  # Enlever les espaces
+        if [[ "$sel" =~ ^[0-9]+$ ]] && [ "$sel" -ge 1 ] && [ "$sel" -le 14 ]; then
+            valid_selections+=("$sel")
+        fi
+    done
+    
+    # Retourner les sélections valides
+    printf '%s\n' "${valid_selections[@]}"
+}
+
+# Configuration des APIs
+declare -A API_CONFIG
+API_CONFIG[1]="COMMANDES|API_COMMANDE|api_commande.py|true"
+API_CONFIG[2]="COMMANDES DIRECTES|API_COMMANDE_DIRECTE|api_commande_directe.py|true"
+API_CONFIG[3]="COMMANDES RÉASSORT|API_COMMANDE_REASSORT|api_commande_reassort.py|true"
+API_CONFIG[4]="BASE ARTICLES|API_BASE_ARTICLE|api_article.py|false"
+API_CONFIG[5]="ARTICLES AVEC PRIX PROMO|API_ARTICLE_PROMO|api_article_promo.py|false"
+API_CONFIG[6]="PROMOTIONS|API_PROMO|api_promo.py|false"
+API_CONFIG[7]="PRODUITS NON TROUVÉS|API_PRODUIT_NON_TROUVE|api_produit_non_trouve.py|false"
+API_CONFIG[8]="COMMANDES THÈME|API_COMMANDE_THEME|api_commande_theme.py|false"
+API_CONFIG[9]="RÉCEPTION|API_RECEPTION|api_reception.py|false"
+API_CONFIG[10]="PRÉ-COMMANDES|API_PRE_COMMANDE|api_pre_commande.py|false"
+API_CONFIG[11]="RETOURS MARCHANDISES|API_RETOUR_MARCHANDISE|api_retour_marchandise.py|false"
+API_CONFIG[12]="INVENTAIRES|API_INVENTAIRE|api_inventaire.py|false"
+API_CONFIG[13]="STATISTIQUES VENTES|API_STATS_VENTE|api_stats_vente.py|false"
+API_CONFIG[14]="MOUVEMENTS DE STOCK|API_MOUVEMENT_STOCK|api_mouvement_stock.py|false"
+
+# Variables globales pour mémoriser les dates
+DATES_ALREADY_SET=false
+
 # Menu principal
 while true; do
     # Maintenir la taille du terminal
@@ -555,120 +651,70 @@ while true; do
     echo "│  📋 EXTRACTIONS DISPONIBLES:                                                │"
     echo "│                                                                              │"
     echo "│    1. Commandes Fournisseurs (Toutes)                                       │"
-    echo "│    2. Commandes Directes                                                    │"
-    echo "│    3. Commandes Réassort                                                    │"
-    echo "│    4. Base Articles (Tous les articles)                                     │"
+    echo "│    2. Commandes Directes                                                     │"
+    echo "│    3. Commandes Réassort                                                     │"
+    echo "│    4. Base Articles (Tous les articles)                                    │"
     echo "│    5. Articles avec prix promo                                              │"
     echo "│    6. Promotions                                                            │"
     echo "│    7. Produits Non Trouvés                                                  │"
     echo "│    8. Commandes par Thème/Promotion                                         │"
-    echo "│    9. Réception de Commandes                                                │"
+    echo "│    9. Réception de Commandes                                               │"
     echo "│   10. Pré-commandes Fournisseurs                                            │"
     echo "│   11. Retours de Marchandises                                               │"
     echo "│   12. Inventaires                                                           │"
     echo "│   13. Statistiques de Ventes                                                │"
+    echo "│   14. Mouvements de Stock                                                   │"
     echo "│                                                                              │"
-    echo "│    A. Extraire TOUT (toutes les APIs)                                       │"
+    echo "│    A. Extraire TOUT (toutes les APIs)                                      │"
     echo "│    R. Réinitialiser les dates                                               │"
     echo "│    Q. Quitter                                                               │"
     echo "│                                                                              │"
     echo "└──────────────────────────────────────────────────────────────────────────────┘"
-    echo
-  
+    show_navigation_commands
+    read -p "Choisissez une ou plusieurs options (ex: 1,3,5,6 ou A, R, Q): " choice
     
-    maintain_terminal_size
-    read -p "Choisissez une option (1-13, A, R, Q): " choice
-
+    # Vérifier les commandes spéciales
+    if [[ "$choice" =~ ^[Aa][Ll][Ii][Ee][Nn]$ ]]; then
+        echo "🛑 Arrêt du script..."
+        if [ -n "$VIRTUAL_ENV" ]; then
+            deactivate 2>/dev/null || true
+        fi
+        exit 0
+    fi
+    
+    # Traiter les choix
     case $choice in
-        1)
-            run_extraction "COMMANDES" "API_COMMANDE" "api_commande.py"
-            ;;
-        2)
-            run_extraction "COMMANDES DIRECTES" "API_COMMANDE_DIRECTE" "api_commande_directe.py"
-            ;;
-        3)
-            run_extraction "COMMANDES RÉASSORT" "API_COMMANDE_REASSORT" "api_commande_reassort.py"
-            ;;
-        4)
-            run_extraction "BASE ARTICLES" "API_BASE_ARTICLE" "api_article.py" "true"
-            ;;
-        5)
-            run_extraction "ARTICLES AVEC PRIX PROMO" "API_ARTICLE_PROMO" "api_article_promo.py"
-            ;;
-        6)
-            run_extraction "PROMOTIONS" "API_PROMO" "api_promo.py"
-            ;;
-        7)
-            run_extraction "PRODUITS NON TROUVÉS" "API_PRODUIT_NON_TROUVE" "api_produit_non_trouve.py"
-            ;;
-        8)
-            run_extraction "COMMANDES THÈME" "API_COMMANDE_THEME" "api_commande_theme.py"
-            ;;
-        9)
-            run_extraction "RÉCEPTION" "API_RECEPTION" "api_reception.py"
-            ;;
-        10)
-            run_extraction "PRÉ-COMMANDES" "API_PRE_COMMANDE" "api_pre_commande.py"
-            ;;
-        11)
-            run_extraction "RETOURS MARCHANDISES" "API_RETOUR_MARCHANDISE" "api_retour_marchandise.py"
-            ;;
-        12)
-            run_extraction "INVENTAIRES" "API_INVENTAIRE" "api_inventaire.py"
-            ;;
-        13)
-            run_extraction "STATISTIQUES VENTES" "API_STATS_VENTE" "api_stats_vente.py"
-            ;;
         A|a)
             echo
             echo "🚀 Lancement de TOUTES les extractions..."
             
             # Demander les dates seulement si pas encore définies
             if [ "$DATES_ALREADY_SET" = "false" ]; then
-                ask_dates
+                if ! ask_dates; then
+                    continue
+                fi
             else
                 echo "📅 Utilisation des dates déjà configurées"
             fi
             
-            echo
-            echo "1/13 - Commandes Fournisseurs (Toutes)..."
-            run_extraction "COMMANDES" "API_COMMANDE" "api_commande.py" "true"
-            echo
-            echo "2/13 - Commandes Directes..."
-            run_extraction "COMMANDES DIRECTES" "API_COMMANDE_DIRECTE" "api_commande_directe.py" "true"
-            echo
-            echo "3/13 - Commandes Réassort..."
-            run_extraction "COMMANDES RÉASSORT" "API_COMMANDE_REASSORT" "api_commande_reassort.py" "true"
-            echo
-            echo "4/13 - Base Articles..."
-            run_extraction "BASE ARTICLES" "API_BASE_ARTICLE" "api_article.py" "true"
-            echo
-            echo "5/13 - Articles avec prix promo..."
-            run_extraction "ARTICLES AVEC PRIX PROMO" "API_ARTICLE_PROMO" "api_article_promo.py" "true"
-            echo
-            echo "6/13 - Promotions..."
-            run_extraction "PROMOTIONS" "API_PROMO" "api_promo.py" "true"
-            echo
-            echo "7/13 - Produits Non Trouvés..."
-            run_extraction "PRODUITS NON TROUVÉS" "API_PRODUIT_NON_TROUVE" "api_produit_non_trouve.py" "true"
-            echo
-            echo "8/13 - Commandes par Thème..."
-            run_extraction "COMMANDES THÈME" "API_COMMANDE_THEME" "api_commande_theme.py" "true"
-            echo
-            echo "9/13 - Réception de Commandes..."
-            run_extraction "RÉCEPTION" "API_RECEPTION" "api_reception.py" "true"
-            echo
-            echo "10/13 - Pré-commandes Fournisseurs..."
-            run_extraction "PRÉ-COMMANDES" "API_PRE_COMMANDE" "api_pre_commande.py" "true"
-            echo
-            echo "11/13 - Retours de Marchandises..."
-            run_extraction "RETOURS MARCHANDISES" "API_RETOUR_MARCHANDISE" "api_retour_marchandise.py" "true"
-            echo
-            echo "12/13 - Inventaires..."
-            run_extraction "INVENTAIRES" "API_INVENTAIRE" "api_inventaire.py" "true"
-            echo
-            echo "13/13 - Statistiques de Ventes..."
-            run_extraction "STATISTIQUES VENTES" "API_STATS_VENTE" "api_stats_vente.py" "true"
+            # Pour chaque API, demander les filtres spécifiques
+            for i in {1..14}; do
+                IFS='|' read -r api_name api_folder script_name needs_status <<< "${API_CONFIG[$i]}"
+                
+                selected_status=""
+                if [ "$needs_status" = "true" ]; then
+                    if ! ask_status_filter "$api_name"; then
+                        echo "⚠️ Extraction $api_name annulée"
+                        continue
+                    fi
+                    selected_status="$SELECTED_STATUS_FILTER"
+                fi
+                
+                echo
+                echo "$i/14 - $api_name..."
+                run_extraction "$api_name" "$api_folder" "$script_name" "$selected_status"
+            done
+            
             echo
             echo "✅ Toutes les extractions terminées !"
             ;;
@@ -687,19 +733,63 @@ while true; do
             break
             ;;
         *)
-            echo "❌ Option invalide. Veuillez choisir 1-13, A, R ou Q."
-            sleep 2
-            continue
+            # Parser la sélection multiple
+            selections=($(parse_selection "$choice"))
+            
+            if [ ${#selections[@]} -eq 0 ]; then
+                echo "❌ Option invalide. Veuillez choisir 1-14, A, R ou Q."
+                sleep 2
+                continue
+            fi
+            
+            # Demander les dates une fois pour toutes les extractions sélectionnées
+            if [ "$DATES_ALREADY_SET" = "false" ]; then
+                if ! ask_dates; then
+                    continue
+                fi
+            else
+                echo "📅 Utilisation des dates déjà configurées"
+            fi
+            
+            # Pour chaque extraction sélectionnée
+            for sel in "${selections[@]}"; do
+                IFS='|' read -r api_name api_folder script_name needs_status <<< "${API_CONFIG[$sel]}"
+                
+                selected_status=""
+                if [ "$needs_status" = "true" ]; then
+                    if ! ask_status_filter "$api_name"; then
+                        echo "⚠️ Extraction $api_name annulée"
+                        continue
+                    fi
+                    selected_status="$SELECTED_STATUS_FILTER"
+                fi
+                
+                echo
+                echo "🚀 Extraction $api_name..."
+                run_extraction "$api_name" "$api_folder" "$script_name" "$selected_status"
+            done
+            
+            echo
+            echo "✅ Extractions sélectionnées terminées !"
             ;;
     esac
-
+    
     echo
     echo "============================================================"
     echo
     maintain_terminal_size
-    read -p "Appuyez sur Entrée pour continuer ou 'Q' pour quitter: " continue
-    if [[ $continue == "Q" || $continue == "q" ]]; then
-        break
+    show_navigation_commands
+    read -p "Appuyez sur Entrée pour continuer, [X] pour retour, [ALIEN] pour quitter: " continue_input
+    
+    if [[ "$continue_input" =~ ^[Aa][Ll][Ii][Ee][Nn]$ ]]; then
+        echo "🛑 Arrêt du script..."
+        if [ -n "$VIRTUAL_ENV" ]; then
+            deactivate 2>/dev/null || true
+        fi
+        exit 0
+    fi
+    if [[ "$continue_input" =~ ^[Xx]$ ]]; then
+        continue
     fi
 done
 
@@ -726,7 +816,8 @@ echo "   ├── EXPORT_RECEPTION/         (Réception de Commandes)"
 echo "   ├── EXPORT_PRE_COMMANDE/      (Pré-commandes Fournisseurs)"
 echo "   ├── EXPORT_RETOUR_MARCHANDISE/ (Retours de Marchandises)"
 echo "   ├── EXPORT_INVENTAIRE/        (Inventaires)"
-echo "   └── EXPORT_STATS_VENTE/       (Statistiques de Ventes)"
+echo "   ├── EXPORT_STATS_VENTE/       (Statistiques de Ventes)"
+echo "   └── EXPORT_MOUVEMENT_STOCK/   (Mouvements de Stock)"
 echo
 echo "📋 LOGS:"
 echo "   /Volumes/SHARE/FOFANA/Etats Natacha/SCRIPT/LOG/"

@@ -71,7 +71,7 @@ class ProsumaAPICommandeReassortExtractor:
             try:
                 # Vérifier que le dossier existe et est accessible
                 if os.path.exists(log_network_path) and os.access(log_network_path, os.W_OK):
-                    log_file = os.path.join(log_network_path, f'api_commande_reassort_{datetime.now().strftime("%Y%m%d")}.log')
+            log_file = os.path.join(log_network_path, f'api_commande_reassort_{datetime.now().strftime("%Y%m%d")}.log')
                     # Tester l'écriture
                     try:
                         test_file = os.path.join(log_network_path, '.test_write')
@@ -81,7 +81,7 @@ class ProsumaAPICommandeReassortExtractor:
                     except (PermissionError, OSError):
                         # Pas d'accès en écriture, utiliser le fallback local
                         log_file = None
-                else:
+        else:
                     log_file = None
             except Exception as e:
                 # Erreur d'accès au réseau, utiliser le fallback local
@@ -97,18 +97,18 @@ class ProsumaAPICommandeReassortExtractor:
                 log_file = os.path.join(local_log_dir, f'api_commande_reassort_{datetime.now().strftime("%Y%m%d")}.log')
             except Exception as e:
                 # Dernier recours : utiliser le dossier de base
-                log_file = os.path.join(self.base_dir, f'api_commande_reassort_{datetime.now().strftime("%Y%m%d")}.log')
+            log_file = os.path.join(self.base_dir, f'api_commande_reassort_{datetime.now().strftime("%Y%m%d")}.log')
         
         # Configuration du logging avec gestion d'erreur
         try:
-            logging.basicConfig(
-                level=logging.INFO,
-                format='%(asctime)s - %(levelname)s - %(message)s',
-                handlers=[
-                    logging.FileHandler(log_file, encoding='utf-8'),
-                    SafeStreamHandler()
-                ]
-            )
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(levelname)s - %(message)s',
+            handlers=[
+                logging.FileHandler(log_file, encoding='utf-8'),
+                SafeStreamHandler()
+            ]
+        )
             
             # Définir les permissions pour permettre à tous les utilisateurs d'écrire
             from utils import set_log_file_permissions
@@ -191,7 +191,7 @@ class ProsumaAPICommandeReassortExtractor:
         # Si pas de mapping exact, utiliser le nom du magasin tel quel
         # (pour les autres magasins qui n'ont pas encore de dossier)
         return shop_name
-    
+
     def get_network_path_for_shop(self, shop_code):
         """Retourne le chemin réseau pour un magasin spécifique dans ASTEN"""
         try:
@@ -213,11 +213,11 @@ class ProsumaAPICommandeReassortExtractor:
             logger.debug(f"Chemin réseau calculé pour {shop_code}: {network_path}")
             
             # Créer le dossier s'il n'existe pas
-            if create_network_folder(network_path):
+        if create_network_folder(network_path):
                 # Vérifier que le dossier existe vraiment
                 if os.path.exists(network_path):
                     logger.debug(f"✅ Dossier réseau vérifié: {network_path}")
-                    return network_path
+            return network_path
                 else:
                     logger.warning(f"⚠️ Le dossier réseau n'existe pas après création: {network_path}")
                     return None
@@ -226,7 +226,7 @@ class ProsumaAPICommandeReassortExtractor:
                 return None
         except Exception as e:
             logger.error(f"❌ Erreur lors de la création du chemin réseau pour {shop_code}: {e}")
-            return None
+        return None
         
     def get_log_network_path(self):
         """Retourne le chemin réseau pour les logs"""
@@ -598,7 +598,7 @@ class ProsumaAPICommandeReassortExtractor:
             logger.info("=" * 60)
             
             if len(all_orders) > 0:
-                logger.info(f"✅ {len(all_orders)} commandes réassort récupérées au total")
+            logger.info(f"✅ {len(all_orders)} commandes réassort récupérées au total")
             else:
                 logger.warning(f"⚠️ Aucune commande réassort récupérée")
             return all_orders
@@ -750,7 +750,7 @@ class ProsumaAPICommandeReassortExtractor:
                     # Chemin UNC, utiliser directement la concaténation avec backslash
                     network_filepath = f"{network_path}\\{filename}" if not network_path.endswith('\\') else f"{network_path}{filename}"
                 else:
-                    network_filepath = os.path.join(network_path, filename)
+            network_filepath = os.path.join(network_path, filename)
                 try:
                     # Vérifier que le dossier réseau existe
                     if not os.path.exists(network_path):
@@ -766,7 +766,7 @@ class ProsumaAPICommandeReassortExtractor:
                     # Copier le fichier
                     logger.info(f"📋 Tentative de copie vers: {network_filepath}")
                     try:
-                        shutil.copy2(local_filepath, network_filepath)
+            shutil.copy2(local_filepath, network_filepath)
                         logger.info(f"✅ Commande copy2 exécutée sans erreur")
                     except Exception as copy_ex:
                         logger.error(f"❌❌❌ ERREUR LORS DE LA COPIE ❌❌❌")
@@ -801,7 +801,7 @@ class ProsumaAPICommandeReassortExtractor:
                         logger.info(f"   ✅ Fichier vérifié et accessible")
                         logger.info(f"📁 Fichier local conservé dans EXPORT: {local_filepath}")
                         # IMPORTANT: Retourner le chemin réseau si la copie a réussi
-                        return network_filepath
+            return network_filepath
                     elif file_exists:
                         logger.warning(f"⚠️⚠️⚠️ FICHIER COPIÉ MAIS PROBLÈME DE VÉRIFICATION ⚠️⚠️⚠️")
                         logger.warning(f"   📁 Chemin réseau: {network_filepath}")
@@ -962,7 +962,7 @@ class ProsumaAPICommandeReassortExtractor:
                 if create_network_folder(shop_folder_path):
                     created_folders.append(folder_name)
                     logger.info(f"✅ Dossier créé/vérifié: {folder_name}")
-                else:
+        else:
                     logger.warning(f"⚠️ Impossible de créer le dossier: {folder_name}")
         
         logger.info(f"✅ {len(created_folders)} dossiers créés/vérifiés sur {len(self.shop_codes)} magasins")
@@ -970,6 +970,7 @@ class ProsumaAPICommandeReassortExtractor:
         
         successful_shops = 0
         total_shops = len(self.shop_codes)
+        failed_shops = []  # Liste des magasins en échec avec leur nom
         
         for shop_code in self.shop_codes:
             try:
@@ -981,9 +982,13 @@ class ProsumaAPICommandeReassortExtractor:
                     successful_shops += 1
                     logger.info(f"✅✅✅ MAGASIN {shop_code} TRAITÉ AVEC SUCCÈS ✅✅✅")
                 else:
+                    shop_name = self.shop_config.get(shop_code, {}).get('name', 'Nom inconnu')
+                    failed_shops.append((shop_code, shop_name))
                     logger.error(f"❌❌❌ MAGASIN {shop_code} ÉCHEC ❌❌❌")
                     
             except Exception as e:
+                shop_name = self.shop_config.get(shop_code, {}).get('name', 'Nom inconnu')
+                failed_shops.append((shop_code, shop_name))
                 logger.error(f"❌❌❌ ERREUR LORS DE L'EXTRACTION DU MAGASIN {shop_code} ❌❌❌")
                 logger.error(f"   Erreur: {e}")
         
@@ -992,16 +997,24 @@ class ProsumaAPICommandeReassortExtractor:
         logger.info("📊📊📊 RÉSUMÉ FINAL DE L'EXTRACTION 📊📊📊")
         logger.info(f"{'='*60}")
         logger.info(f"✅ Magasins traités avec succès: {successful_shops}/{total_shops}")
-        logger.info(f"❌ Magasins en échec: {total_shops - successful_shops}/{total_shops}")
+        logger.info(f"❌ Magasins en échec: {len(failed_shops)}/{total_shops}")
         
-        if successful_shops == total_shops:
-            logger.info("=" * 60)
-            logger.info("✅✅✅ EXTRACTION COMPLÈTEMENT RÉUSSIE ✅✅✅")
-            logger.info("=" * 60)
-        elif successful_shops > 0:
+        # Afficher les magasins en erreur s'il y en a
+        if failed_shops:
             logger.warning("=" * 60)
             logger.warning("⚠️⚠️⚠️ EXTRACTION PARTIELLEMENT RÉUSSIE ⚠️⚠️⚠️")
             logger.warning("=" * 60)
+            logger.warning("")
+            logger.warning("📋📋📋 LISTE DES MAGASINS EN ÉCHEC 📋📋📋")
+            logger.warning("=" * 60)
+            for shop_code, shop_name in failed_shops:
+                logger.warning(f"   ❌ Code magasin: {shop_code} - Nom: {shop_name}")
+            logger.warning("=" * 60)
+            logger.warning("")
+        elif successful_shops == total_shops:
+            logger.info("=" * 60)
+            logger.info("✅✅✅ EXTRACTION COMPLÈTEMENT RÉUSSIE ✅✅✅")
+            logger.info("=" * 60)
         else:
             logger.error("=" * 60)
             logger.error("❌❌❌ AUCUNE EXTRACTION RÉUSSIE ❌❌❌")

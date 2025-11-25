@@ -457,6 +457,7 @@ class ProsumaAPICommandeDirecteExtractor:
         
         successful_shops = 0
         total_shops = len(self.shop_codes)
+        failed_shops = []  # Liste des magasins en échec avec leur nom
         
         for shop_code in self.shop_codes:
             try:
@@ -466,18 +467,50 @@ class ProsumaAPICommandeDirecteExtractor:
                 
                 if self.extract_shop(shop_code):
                     successful_shops += 1
+                else:
+                    # Extraction échouée
+                    shop_name = self.shop_config.get(shop_code, {}).get(\'name\', \'Nom inconnu\')
+                    failed_shops.append((shop_code, shop_name))
                     logger.info(f"✅ Magasin {shop_code} traité avec succès")
                 else:
                     logger.error(f"❌ Erreur lors de l'extraction du magasin {shop_code}")
                     
             except Exception as e:
-                logger.error(f"❌ Erreur lors de l'extraction du magasin {shop_code}: {e}")
+                # Erreur lors de l\'extraction
+                shop_name = self.shop_config.get(shop_code, {}).get(\'name\', \'Nom inconnu\')
+                failed_shops.append((shop_code, shop_name))
+                logger.error(f"❌ Erreur lors de l\'extraction du magasin {shop_code}: {e}")
         
         # Résumé final
         logger.info(f"\n{'='*60}")
         logger.info("RÉSUMÉ DE L'EXTRACTION")
         logger.info(f"{'='*60}")
-        logger.info(f"Magasins traités avec succès: {successful_shops}/{total_shops}")
+        logger.info("=" * 60)
+        logger.info("📊📊📊 RÉSUMÉ FINAL DE L'EXTRACTION 📊📊📊")
+        logger.info("=" * 60)
+        logger.info(f"✅ Magasins traités avec succès: {successful_shops}/{total_shops}")
+        logger.info(f"❌ Magasins en échec: {len(failed_shops)}/{total_shops}")
+        
+        # Afficher les magasins en erreur s'il y en a
+        if failed_shops:
+            logger.warning("=" * 60)
+            logger.warning("⚠️⚠️⚠️ EXTRACTION PARTIELLEMENT RÉUSSIE ⚠️⚠️⚠️")
+            logger.warning("=" * 60)
+            logger.warning("")
+            logger.warning("📋📋📋 LISTE DES MAGASINS EN ÉCHEC 📋📋📋")
+            logger.warning("=" * 60)
+            for shop_code, shop_name in failed_shops:
+                logger.warning(f"   ❌ Code magasin: {shop_code} - Nom: {shop_name}")
+            logger.warning("=" * 60)
+            logger.warning("")
+        elif successful_shops == total_shops:
+            logger.info("=" * 60)
+            logger.info("✅✅✅ EXTRACTION COMPLÈTEMENT RÉUSSIE ✅✅✅")
+            logger.info("=" * 60)
+        else:
+            logger.error("=" * 60)
+            logger.error("❌❌❌ AUCUNE EXTRACTION RÉUSSIE ❌❌❌")
+            logger.error("=" * 60)
         
         if successful_shops == total_shops:
             logger.info("✅ Extraction complètement réussie")

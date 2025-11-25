@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Extracteur API Prosuma RPOS - Produits non trouvés (Event Line)
-Récupère les événements de produits non trouvés via l'API event_line
+Extracteur API Prosuma RPOS - Mouvements de Stock
+Récupère les mouvements de stock via l'API stock_move
 """
 
 import requests
@@ -18,12 +18,35 @@ import sys
 
 # Ajouter le répertoire parent au path pour importer utils
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from utils import load_shop_config, build_network_path, create_network_folder, SafeStreamHandler
+from utils import load_shop_config, build_network_path, create_network_folder, SafeStreamHandler, set_log_file_permissions
 
 # Désactiver les warnings SSL
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-class ProsumaAPIProduitNonTrouveExtractor:
+# Mapping des types de mouvements de stock
+STOCK_MOVE_TYPES = {
+    0: 'Défaut',
+    3: 'Déstockage',
+    5: 'Annulation',
+    6: 'Dégustation gratuite',
+    7: 'Dégustation payante',
+    8: 'Cadeau client',
+    9: 'Remplacement article défectueux',
+    10: 'Casse',
+    11: 'Article abîmé',
+    12: 'Article volé',
+    13: 'Casse livraison',
+    14: 'Démonstration',
+    16: 'Retour entrepôt',
+    17: 'S.A.V.',
+    21: 'Régularisation',
+    25: 'Frais généraux',
+    26: 'Inventaire manuel',
+    27: 'Arrivage manuel',
+    28: 'Cession inter-rayon'
+}
+
+class ProsumaAPIMouvementStockExtractor:
     def __init__(self):
         """Initialise l'extracteur avec la configuration"""
         # Déterminer le chemin racine du projet
@@ -82,7 +105,7 @@ class ProsumaAPIProduitNonTrouveExtractor:
         self.session.auth = (self.username, self.password)
         self.session.verify = False
 
-        print(f"Extracteur API Produits Non Trouvés Prosuma initialisé pour {self.username}")
+        print(f"Extracteur API Mouvements de Stock Prosuma initialisé pour {self.username}")
         print(f"Magasins configurés: {self.shop_codes}")
         print(f"Période: {self.start_date.strftime('%Y-%m-%d')} à {self.end_date.strftime('%Y-%m-%d')}")
 
@@ -90,7 +113,7 @@ class ProsumaAPIProduitNonTrouveExtractor:
         """Configure le logging avec fichier sur le réseau"""
         log_path = self.get_log_network_path()
         if log_path:
-            log_file = os.path.join(log_path, 'prosuma_api_produit_non_trouve.log')
+            log_file = os.path.join(log_path, 'prosuma_api_mouvement_stock.log')
             logging.basicConfig(
                 level=logging.INFO,
                 format='%(asctime)s - %(levelname)s - %(message)s',
@@ -99,172 +122,199 @@ class ProsumaAPIProduitNonTrouveExtractor:
                     SafeStreamHandler()
                 ]
             )
+            # Définir les permissions du fichier de log
+            set_log_file_permissions(log_file)
         else:
-            log_file = 'prosuma_api_produit_non_trouve.log'
             logging.basicConfig(
                 level=logging.INFO,
                 format='%(asctime)s - %(levelname)s - %(message)s',
-                handlers=[
-                    logging.FileHandler(log_file, encoding='utf-8'),
-                    SafeStreamHandler()
-                ]
+                handlers=[SafeStreamHandler()]
             )
-        
-        # Définir les permissions pour permettre à tous les utilisateurs d'écrire
-        from utils import set_log_file_permissions
-        set_log_file_permissions(log_file)
-        
-        global logger
-        logger = logging.getLogger(__name__)
 
     def setup_dates(self):
-        """Configure les dates de filtrage (hier -> aujourd'hui par défaut)"""
-        # Lire les dates depuis config.env
-        date_start_str = os.getenv('DATE_START', '').strip()
-        date_end_str = os.getenv('DATE_END', '').strip()
+        """Configure les dates de début et fin pour l'extraction"""
+        # Récupérer les variables d'environnement pour les dates
+        use_default = os.getenv('USE_DEFAULT_DATES', 'true').lower() == 'true'
+        custom_start = os.getenv('CUSTOM_START_DATE')
+        custom_end = os.getenv('CUSTOM_END_DATE')
         
-        if date_start_str and date_end_str:
-            # Utiliser les dates personnalisées
-            try:
-                # Parser les dates et ajouter les heures appropriées
-                start_date_only = datetime.strptime(date_start_str, '%Y-%m-%d')
-                end_date_only = datetime.strptime(date_end_str, '%Y-%m-%d')
-                
-                # Ajouter 00:00:00 pour la date de début et 23:59:59 pour la date de fin
-                self.start_date = start_date_only.replace(hour=0, minute=0, second=0, microsecond=0)
-                self.end_date = end_date_only.replace(hour=23, minute=59, second=59, microsecond=999999)
-                
-                print(f"Dates personnalisées: {self.start_date.strftime('%Y-%m-%d %H:%M:%S')} à {self.end_date.strftime('%Y-%m-%d %H:%M:%S')}")
-            except ValueError:
-                print("Format de date invalide, utilisation des dates par défaut")
-                self.setup_default_dates()
+        if not use_default and custom_start and custom_end:
+            # Utiliser les dates personnalisées fournies
+            self.start_date = datetime.strptime(custom_start, '%Y-%m-%d')
+            self.end_date = datetime.strptime(custom_end, '%Y-%m-%d')
+            print(f"Dates personnalisées: {custom_start} à {custom_end}")
         else:
-            # Utiliser les dates par défaut (hier -> aujourd'hui)
-            self.setup_default_dates()
+            # Par défaut: hier à aujourd'hui
+            today = datetime.now()
+            yesterday = today - timedelta(days=1)
+            self.start_date = yesterday.replace(hour=0, minute=0, second=0, microsecond=0)
+            self.end_date = today.replace(hour=23, minute=59, second=59, microsecond=999999)
     
-    def setup_default_dates(self):
-        """Configure les dates par défaut (hier -> aujourd'hui)"""
-        today = datetime.now()
-        yesterday = today - timedelta(days=1)
-        
-        # Ajouter les heures appropriées
-        self.start_date = yesterday.replace(hour=0, minute=0, second=0, microsecond=0)
-        self.end_date = today.replace(hour=23, minute=59, second=59, microsecond=999999)
-        
-        print(f"Dates par défaut: {self.start_date.strftime('%Y-%m-%d %H:%M:%S')} à {self.end_date.strftime('%Y-%m-%d %H:%M:%S')}")
-
-    def get_network_path_for_shop(self, shop_code):
-        """Retourne le chemin réseau pour un magasin spécifique"""
-        network_path = build_network_path(self.network_folder_base, "PRODUIT_NON_TROUVE")
-        if create_network_folder(network_path):
-            return network_path
-        return None
-        
     def get_log_network_path(self):
-        """Retourne le chemin réseau pour les logs"""
-        if not self.network_folder_base:
-            return None
-        # Chemin: \\\\10.0.70.169\\share\\FOFANA\\Etats Natacha\\SCRIPT\\LOG
-        base = self.network_folder_base.replace('/', '\\\\')
-        if base.endswith('\\\\'):
-            base = base[:-1]
-        log_path = f"{base}\\\\Etats Natacha\\\\SCRIPT\\\\LOG"
-        if create_network_folder(log_path):
+        """Retourne le chemin du dossier de logs sur le réseau"""
+        try:
+            network_path = build_network_path(self.network_folder_base, 'MOUVEMENT_STOCK')
+            log_path = os.path.join(network_path, 'LOG')
+            create_network_folder(log_path)
             return log_path
-        return None
-
+        except Exception as e:
+            print(f"⚠️ Impossible de créer le dossier de logs: {e}")
+            return None
+    
+    def get_network_path_for_shop(self, shop_code):
+        """Retourne le chemin du dossier réseau pour un magasin"""
+        try:
+            network_path = build_network_path(self.network_folder_base, 'MOUVEMENT_STOCK')
+            create_network_folder(network_path)
+            return network_path
+        except Exception as e:
+            logger = logging.getLogger(__name__)
+            logger.error(f"❌ Erreur lors de la création du dossier réseau: {e}")
+            return None
+    
     def test_api_connection(self, base_url):
         """Teste la connexion à l'API"""
         try:
-            test_url = f"{base_url}/api/user/"
-            response = self.session.get(test_url, timeout=30)
-            if response.status_code == 200:
-                logger.info(f"✅ Connexion API réussie: {base_url}")
-                return True
-            else:
-                logger.error(f"❌ Erreur de connexion API {base_url}: {response.status_code} {response.reason}")
-                if response.status_code == 401:
-                    logger.error(f"❌ Erreur d'authentification - Vérifiez PROSUMA_USER et PROSUMA_PASSWORD dans config.env")
+            response = self.session.get(f"{base_url}/api/user/", timeout=30)
+            if response.status_code == 401:
+                logger = logging.getLogger(__name__)
+                logger.error(f"❌ Erreur de connexion API {base_url}: 401 Unauthorized")
+                logger.error(f"❌ Erreur d'authentification - Vérifiez PROSUMA_USER et PROSUMA_PASSWORD dans config.env")
                 return False
-        except Exception as e:
+            response.raise_for_status()
+            logger = logging.getLogger(__name__)
+            logger.info(f"✅ Connexion API réussie: {base_url}")
+            return True
+        except requests.exceptions.RequestException as e:
+            logger = logging.getLogger(__name__)
             logger.error(f"❌ Erreur de connexion API {base_url}: {e}")
             return False
-
+    
     def get_shop_info(self, base_url, shop_code):
-        """Récupère les informations du magasin"""
+        """Récupère les informations d'un magasin"""
         try:
-            url = f"{base_url}/api/shop/"
-            response = self.session.get(url, timeout=30)
+            response = self.session.get(
+                f"{base_url}/api/shop/",
+                params={'reference': shop_code},
+                timeout=30
+            )
+            response.raise_for_status()
+            data = response.json()
             
-            if response.status_code == 200:
-                data = response.json()
-                
-                # Gérer la structure paginée
-                if isinstance(data, dict) and 'results' in data:
-                    shops = data['results']
-                elif isinstance(data, list):
-                    shops = data
-                else:
-                    logger.error(f"❌ Format de réponse invalide: {type(data)}")
-                    return None
-                
-                for shop in shops:
-                    if str(shop.get('reference')) == str(shop_code):
-                        logger.info(f"✅ Magasin {shop_code} trouvé: {shop.get('name', 'N/A')}")
-                        return shop
-                
-                logger.warning(f"⚠️ Magasin {shop_code} non trouvé dans la liste")
-                return None
-            else:
-                logger.error(f"❌ Erreur lors de la récupération des magasins: {response.status_code}")
-                return None
-                
-        except Exception as e:
-            logger.error(f"❌ Erreur lors de la récupération des informations du magasin: {e}")
+            if data.get('results'):
+                shop = data['results'][0]
+                logger = logging.getLogger(__name__)
+                logger.info(f"✅ Magasin {shop_code} trouvé: {shop.get('name', 'N/A')}")
+                return shop
             return None
-
-
-    def display_extraction_frame(self, shop_code, shop_name, total_items, total_pages, period):
-        """Affiche un cadre avec les détails de l'extraction"""
-        logger.info("┌" + "─" * 78 + "┐")
-        logger.info("│" + " " * 78 + "│")
-        logger.info(f"│{'📦 EXTRACTION PRODUITS NON TROUVÉS':^78}│")
-        logger.info("│" + " " * 78 + "│")
-        line1 = f"🏪 Magasin: {shop_name} ({shop_code})"
-        logger.info("│  " + line1 + " " * (76 - len(line1)) + "│")
-        line2 = f"📅 Période: {period}"
-        logger.info("│  " + line2 + " " * (76 - len(line2)) + "│")
-        line3 = f"📊 Total éléments: {total_items:,}"
-        logger.info("│  " + line3 + " " * (76 - len(line3)) + "│")
-        line4 = f"📄 Pages à traiter: {total_pages}"
-        logger.info("│  " + line4 + " " * (76 - len(line4)) + "│")
-        logger.info("│" + " " * 78 + "│")
-        logger.info("└" + "─" * 78 + "┘")
-
+        except Exception as e:
+            logger = logging.getLogger(__name__)
+            logger.error(f"❌ Erreur lors de la récupération du magasin: {e}")
+            return None
+    
+    def _flatten_value(self, value, max_length=1000):
+        """Convertit une valeur en chaîne formatée pour le CSV"""
+        if value is None or value == '':
+            return ''
+        elif isinstance(value, bool):
+            return 'Oui' if value else 'Non'
+        elif isinstance(value, (int, float)):
+            return str(value)
+        elif isinstance(value, str):
+            # Nettoyer et limiter la longueur
+            cleaned = value.strip().replace('\n', ' ').replace('\r', ' ')
+            return cleaned[:max_length] if len(cleaned) > max_length else cleaned
+        elif isinstance(value, dict):
+            # Pour les dictionnaires, retourner une version compacte
+            try:
+                return json.dumps(value, ensure_ascii=False)[:max_length]
+            except:
+                return str(value)[:max_length]
+        elif isinstance(value, list):
+            # Pour les listes, retourner une version compacte
+            if len(value) == 0:
+                return ''
+            try:
+                return json.dumps(value, ensure_ascii=False)[:max_length]
+            except:
+                return str(value)[:max_length]
+        else:
+            return str(value)[:max_length]
+    
+    def _get_all_fields_from_stock_moves(self, stock_moves):
+        """Détecte dynamiquement tous les champs présents dans les mouvements de stock
+        
+        Args:
+            stock_moves: Liste des mouvements de stock
+            
+        Returns:
+            Liste des noms de champs uniques
+        """
+        all_fields = set()
+        
+        # Toujours inclure les champs importants en premier
+        important_fields_always = [
+            'shop_code', 'shop_name', 'date', 'id', 'quantity',
+            'previous_quantity', 'last_quantity',
+            'product_id', 'product_ean', 'product_label_1',
+            'product_selling_price', 'product_buying_price',
+            'stock_move_type', 'stock_move_type_label',
+            'comment', 'name',
+            'created_at', 'updated_at', 'deleted_at'
+        ]
+        
+        for field in important_fields_always:
+            all_fields.add(field)
+        
+        # Parcourir tous les mouvements pour détecter les champs
+        for move in stock_moves:
+            for key in move.keys():
+                # Ignorer les champs trop complexes ou les relations FK
+                if key not in ['extras'] and not key.endswith('_id'):
+                    all_fields.add(key)
+        
+        # Convertir en liste triée
+        fields_list = sorted(list(all_fields))
+        
+        # S'assurer que les champs importants sont en premier
+        ordered_fields = []
+        for field in important_fields_always:
+            if field in fields_list:
+                ordered_fields.append(field)
+                fields_list.remove(field)
+        
+        # Ajouter le reste des champs
+        ordered_fields.extend(fields_list)
+        
+        return ordered_fields
     
     def count_total_records(self, base_url, shop_id, page_size=1000):
         """Compte le nombre total d'enregistrements disponibles"""
         try:
-            url = f"{base_url}/api/event_line/product_not_found"
+            url = f"{base_url}/api/stock_move/"
             params = {
-                'shop': shop_id,  # Ajouter le paramètre shop pour filtrer par magasin
+                'shop': shop_id,
                 'page_size': page_size,
                 'page': 1
             }
             
-            # Ajouter les paramètres de date si disponibles (format ISO avec timezone)
+            # Ajouter les paramètres de date si disponibles (utiliser date_0 et date_1)
+            # S'assurer que date_0 commence à 00:00:00 et date_1 finit à 23:59:59
             if hasattr(self, 'start_date') and hasattr(self, 'end_date'):
-                params['date_0'] = self.start_date.strftime('%Y-%m-%dT%H:%M:%S+00:00')
-                params['date_1'] = self.end_date.strftime('%Y-%m-%dT%H:%M:%S+00:00')
+                # Créer une copie des dates pour ajuster les heures
+                start_with_time = self.start_date.replace(hour=0, minute=0, second=0, microsecond=0)
+                end_with_time = self.end_date.replace(hour=23, minute=59, second=59, microsecond=999999)
+                params['date_0'] = start_with_time.strftime('%Y-%m-%dT%H:%M:%S')
+                params['date_1'] = end_with_time.strftime('%Y-%m-%dT%H:%M:%S')
             
+            logger = logging.getLogger(__name__)
             logger.info(f"🔍 URL appelée: {url}")
             logger.info(f"🔍 Paramètres: {params}")
+            
             response = self.session.get(url, params=params, timeout=30)
             
             if response.status_code == 200:
                 data = response.json()
-                # Afficher un aperçu de la réponse pour le débogage
-                logger.debug(f"📋 Structure de la réponse: {list(data.keys()) if isinstance(data, dict) else 'Liste'}")
                 
                 if isinstance(data, dict) and 'results' in data:
                     # Si c'est une réponse paginée
@@ -290,42 +340,36 @@ class ProsumaAPIProduitNonTrouveExtractor:
             else:
                 logger.error(f"❌ Erreur lors du comptage: {response.status_code}")
                 logger.error(f"❌ Réponse: {response.text[:500]}")
-                # Essayer sans le paramètre shop si l'erreur est 400
-                if response.status_code == 400:
-                    logger.info("🔄 Tentative sans le paramètre shop...")
-                    params_without_shop = {k: v for k, v in params.items() if k != 'shop'}
-                    response2 = self.session.get(url, params=params_without_shop, timeout=30)
-                    if response2.status_code == 200:
-                        data = response2.json()
-                        total_count = data.get('count', 0)
-                        logger.info(f"✅ Comptage réussi (sans shop): {total_count} enregistrements")
-                        return total_count
                 return 0
                 
         except Exception as e:
+            logger = logging.getLogger(__name__)
             logger.error(f"❌ Erreur lors du comptage: {e}")
             return 0
 
-    def get_event_lines(self, base_url, shop_id, page_size=1000):
+    def get_stock_moves(self, base_url, shop_id, page_size=1000):
         """Récupère les données avec pagination complète"""
+        logger = logging.getLogger(__name__)
+        
         # D'abord, compter le nombre total d'enregistrements
         logger.info("🔍 Comptage du nombre total d'enregistrements...")
         total_records = self.count_total_records(base_url, shop_id, page_size)
         
-        # Si total_records est 0, on fait quand même une requête pour vérifier s'il y a des résultats
-        # (car l'API peut retourner count=0 mais avoir des résultats)
+        # Si total_records est 0, vérifier quand même s'il y a des résultats
         if total_records == 0:
             logger.info("🔍 Vérification directe des résultats (count=0 mais peut-être des résultats)...")
-            # Faire une requête pour voir s'il y a vraiment des résultats
-            url = f"{base_url}/api/event_line/product_not_found"
+            url = f"{base_url}/api/stock_move/"
             params = {
                 'shop': shop_id,
                 'page_size': 100,
                 'page': 1
             }
             if hasattr(self, 'start_date') and hasattr(self, 'end_date'):
-                params['date_0'] = self.start_date.strftime('%Y-%m-%dT%H:%M:%S+00:00')
-                params['date_1'] = self.end_date.strftime('%Y-%m-%dT%H:%M:%S+00:00')
+                # Créer une copie des dates pour ajuster les heures
+                start_with_time = self.start_date.replace(hour=0, minute=0, second=0, microsecond=0)
+                end_with_time = self.end_date.replace(hour=23, minute=59, second=59, microsecond=999999)
+                params['date_0'] = start_with_time.strftime('%Y-%m-%dT%H:%M:%S')
+                params['date_1'] = end_with_time.strftime('%Y-%m-%dT%H:%M:%S')
             
             try:
                 response = self.session.get(url, params=params, timeout=30)
@@ -335,10 +379,8 @@ class ProsumaAPIProduitNonTrouveExtractor:
                         results = data.get('results', [])
                         if len(results) > 0:
                             logger.info(f"✅ {len(results)} résultats trouvés malgré count=0 - extraction avec pagination")
-                            # Estimer le total en fonction du nombre de résultats et de la page_size
-                            # Si on a 100 résultats sur la première page avec page_size=100, il peut y en avoir plus
-                            total_records = max(len(results), 1000)  # Estimation conservatrice
-                            logger.info(f"📊 Estimation: au moins {len(results)} résultats, extraction avec pagination jusqu'à {total_records}")
+                            total_records = max(len(results) * 10, 1000)  # Estimation pour pagination
+                            logger.info(f"📊 Estimation pour pagination: {total_records} enregistrements maximum")
                         else:
                             logger.warning("⚠️ Aucun enregistrement trouvé")
                             return []
@@ -372,17 +414,20 @@ class ProsumaAPIProduitNonTrouveExtractor:
         
         try:
             while page <= total_pages:
-                url = f"{base_url}/api/event_line/product_not_found"
+                url = f"{base_url}/api/stock_move/"
                 params = {
-                    'shop': shop_id,  # Ajouter le paramètre shop pour filtrer par magasin
+                    'shop': shop_id,
                     'page_size': page_size,
                     'page': page
                 }
                 
-                # Ajouter les paramètres de date si disponibles (format ISO avec timezone)
+                # Ajouter les paramètres de date si disponibles
+                # S'assurer que date_0 commence à 00:00:00 et date_1 finit à 23:59:59
                 if hasattr(self, 'start_date') and hasattr(self, 'end_date'):
-                    params['date_0'] = self.start_date.strftime('%Y-%m-%dT%H:%M:%S+00:00')
-                    params['date_1'] = self.end_date.strftime('%Y-%m-%dT%H:%M:%S+00:00')
+                    start_with_time = self.start_date.replace(hour=0, minute=0, second=0, microsecond=0)
+                    end_with_time = self.end_date.replace(hour=23, minute=59, second=59, microsecond=999999)
+                    params['date_0'] = start_with_time.strftime('%Y-%m-%dT%H:%M:%S')
+                    params['date_1'] = end_with_time.strftime('%Y-%m-%dT%H:%M:%S')
                 
                 # Afficher la progression
                 progress_percent = (page - 1) * 100 // total_pages if total_pages > 0 else 0
@@ -440,70 +485,13 @@ class ProsumaAPIProduitNonTrouveExtractor:
         logger.info("=" * 60)
         
         return all_data
-
-    def _flatten_value(self, value, max_length=1000):
-        """Convertit une valeur complexe en chaîne pour le CSV"""
-        if value is None:
-            return ''
-        elif isinstance(value, bool):
-            return 'Oui' if value else 'Non'
-        elif isinstance(value, (int, float)):
-            return str(value)
-        elif isinstance(value, str):
-            # Nettoyer les retours à la ligne et autres caractères problématiques
-            return value.replace('\n', ' ').replace('\r', ' ').strip()
-        elif isinstance(value, dict):
-            # Convertir le dictionnaire en JSON compact
-            try:
-                json_str = json.dumps(value, ensure_ascii=False, separators=(',', ':'))
-                if len(json_str) > max_length:
-                    return json_str[:max_length] + '...'
-                return json_str
-            except:
-                return str(value)
-        elif isinstance(value, list):
-            # Si c'est une liste de dictionnaires, simplifier
-            if value and isinstance(value[0], dict):
-                try:
-                    # Prendre seulement les clés principales
-                    simplified = []
-                    for item in value[:5]:  # Limiter à 5 éléments
-                        if isinstance(item, dict):
-                            simplified.append({k: v for k, v in list(item.items())[:3]})
-                    json_str = json.dumps(simplified, ensure_ascii=False, separators=(',', ':'))
-                    if len(json_str) > max_length:
-                        return json_str[:max_length] + '...'
-                    return json_str
-                except:
-                    return str(value)
-            else:
-                return ', '.join(str(v) for v in value[:10])  # Limiter à 10 éléments
-        else:
-            return str(value)
-
-    def _get_all_fields_from_events(self, events):
-        """Détecte dynamiquement tous les champs disponibles dans les événements"""
-        all_fields = set()
+    
+    def export_to_csv(self, stock_moves, shop_code, shop_name):
+        """Exporte les mouvements de stock vers un fichier CSV"""
+        logger = logging.getLogger(__name__)
         
-        for event in events:
-            if isinstance(event, dict):
-                all_fields.update(event.keys())
-        
-        # Trier et retourner la liste
-        field_list = sorted(list(all_fields))
-        
-        # Ajouter shop_code et shop_name en premier
-        important_fields = ['shop_code', 'shop_name']
-        for field in important_fields:
-            if field in field_list:
-                field_list.remove(field)
-        
-        return important_fields + field_list
-
-    def export_to_csv(self, events, shop_code, shop_name):
-        """Exporte les événements vers un fichier CSV"""
-        if not events:
-            logger.warning(f"Aucun événement à exporter pour le magasin {shop_code}")
+        if not stock_moves:
+            logger.warning(f"Aucun mouvement à exporter pour le magasin {shop_code}")
             return None
         
         # Créer le dossier réseau
@@ -514,11 +502,11 @@ class ProsumaAPIProduitNonTrouveExtractor:
         
         # Créer un fichier temporaire local
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        filename = f'export_produit_non_trouve_{shop_code}_{timestamp}.csv'
+        filename = f'{shop_code}_{timestamp}_Mouvements de stocks.csv'
         local_filepath = os.path.join(self.base_dir, filename)
         
         # Détecter dynamiquement tous les champs disponibles
-        fieldnames = self._get_all_fields_from_events(events)
+        fieldnames = self._get_all_fields_from_stock_moves(stock_moves)
         
         logger.info(f"📋 Champs détectés dans l'API: {len(fieldnames)} champs")
         logger.info(f"   Champs: {', '.join(fieldnames[:10])}{'...' if len(fieldnames) > 10 else ''}")
@@ -529,7 +517,7 @@ class ProsumaAPIProduitNonTrouveExtractor:
                 writer = csv.DictWriter(csvfile, fieldnames=fieldnames, delimiter=';')
                 writer.writeheader()
                 
-                for event in events:
+                for move in stock_moves:
                     # Préparer les données pour l'export avec tous les champs détectés
                     row = {}
                     for field in fieldnames:
@@ -537,16 +525,20 @@ class ProsumaAPIProduitNonTrouveExtractor:
                             row[field] = shop_code
                         elif field == 'shop_name':
                             row[field] = shop_name
+                        elif field == 'stock_move_type_label':
+                            # Ajouter le libellé du type de mouvement
+                            move_type = move.get('stock_move_type', 0)
+                            row[field] = STOCK_MOVE_TYPES.get(move_type, f'Type {move_type}')
                         else:
                             # Récupérer la valeur et la formater
-                            value = event.get(field, '')
+                            value = move.get(field, '')
                             row[field] = self._flatten_value(value)
                     
                     writer.writerow(row)
             
             logger.info(f"✅ Fichier CSV créé localement: {local_filepath}")
-            logger.info(f"   {len(events)} événements exportés")
-            logger.info(f"   {len(fieldnames)} colonnes par événement")
+            logger.info(f"   {len(stock_moves)} mouvements exportés")
+            logger.info(f"   {len(fieldnames)} colonnes par mouvement")
             
             # Copier vers le réseau et supprimer le fichier local
             network_filepath = os.path.join(network_path, filename)
@@ -579,6 +571,8 @@ class ProsumaAPIProduitNonTrouveExtractor:
         Returns:
             Nom du dossier ASTEN ou None si aucun dossier trouvé/créable
         """
+        logger = logging.getLogger(__name__)
+        
         try:
             asten_base_path = r"\\10.0.70.169\share\ASTEN\GESTION DES INCONUS MAG\MAG ASTEN"
             
@@ -673,6 +667,8 @@ class ProsumaAPIProduitNonTrouveExtractor:
             filename: Nom du fichier
             shop_code: Code du magasin
         """
+        logger = logging.getLogger(__name__)
+        
         try:
             # Récupérer le nom du magasin depuis la config
             shop_info = self.shop_config.get(shop_code)
@@ -692,19 +688,19 @@ class ProsumaAPIProduitNonTrouveExtractor:
             # Construire le chemin vers le dossier ASTEN
             asten_base_path = r"\\10.0.70.169\share\ASTEN\GESTION DES INCONUS MAG\MAG ASTEN"
             asten_shop_path = os.path.join(asten_base_path, asten_folder_name)
-            asten_extraction_path = os.path.join(asten_shop_path, "EXTRACTION DU JOUR")
+            asten_mouv_stock_path = os.path.join(asten_shop_path, "MOUV STOCK")
             
             # Créer les dossiers s'ils n'existent pas
             if not os.path.exists(asten_shop_path):
                 os.makedirs(asten_shop_path)
                 logger.info(f"📁 Dossier magasin créé: {asten_shop_path}")
             
-            if not os.path.exists(asten_extraction_path):
-                os.makedirs(asten_extraction_path)
-                logger.info(f"📁 Dossier 'EXTRACTION DU JOUR' créé: {asten_extraction_path}")
+            if not os.path.exists(asten_mouv_stock_path):
+                os.makedirs(asten_mouv_stock_path)
+                logger.info(f"📁 Dossier 'MOUV STOCK' créé: {asten_mouv_stock_path}")
             
             # Copier le fichier vers ASTEN
-            asten_filepath = os.path.join(asten_extraction_path, filename)
+            asten_filepath = os.path.join(asten_mouv_stock_path, filename)
             shutil.copy2(local_filepath, asten_filepath)
             logger.info(f"✅ Fichier copié vers ASTEN: {asten_filepath}")
             
@@ -713,7 +709,9 @@ class ProsumaAPIProduitNonTrouveExtractor:
             logger.warning(f"⚠️ Le fichier principal a été créé avec succès, seule la copie ASTEN a échoué")
 
     def extract_shop(self, shop_code):
-        """Extrait les événements pour un magasin spécifique"""
+        """Extrait les mouvements de stock pour un magasin spécifique"""
+        logger = logging.getLogger(__name__)
+        
         shop_info = self.shop_config.get(shop_code)
         if not shop_info:
             logger.error(f"Configuration manquante pour le magasin {shop_code}")
@@ -723,7 +721,7 @@ class ProsumaAPIProduitNonTrouveExtractor:
         shop_name = shop_info['name']
         
         logger.info(f"==================================================")
-        logger.info(f"EXTRACTION PRODUITS NON TROUVÉS MAGASIN {shop_code}")
+        logger.info(f"EXTRACTION MOUVEMENTS DE STOCK MAGASIN {shop_code}")
         logger.info(f"==================================================")
         logger.info(f"URL serveur: {base_url}")
         logger.info(f"Nom magasin: {shop_name}")
@@ -746,26 +744,26 @@ class ProsumaAPIProduitNonTrouveExtractor:
             logger.error(f"❌ ID du magasin non trouvé")
             return False
         
-        # Récupérer les événements
-        logger.info(f"Récupération des événements pour le magasin {shop_code}...")
-        events = self.get_event_lines(base_url, shop_id)
+        # Récupérer les mouvements de stock
+        logger.info(f"Récupération des mouvements de stock pour le magasin {shop_code}...")
+        stock_moves = self.get_stock_moves(base_url, shop_id)
         
-        if not events:
-            logger.info(f"ℹ️ Aucun événement de produit non trouvé pour le magasin {shop_code} pour la période sélectionnée")
-            logger.info(f"   (C'est normal s'il n'y a pas eu de produits non trouvés ce jour-là)")
+        if not stock_moves:
+            logger.info(f"ℹ️ Aucun mouvement de stock pour le magasin {shop_code} pour la période sélectionnée")
+            logger.info(f"   (C'est normal s'il n'y a pas eu de mouvements ce jour-là)")
             return True
         
         # Exporter vers CSV
         logger.info("=" * 60)
         logger.info(f"💾 EXPORT CSV - MAGASIN {shop_code}")
         logger.info("=" * 60)
-        csv_file = self.export_to_csv(events, shop_code, shop_name)
+        csv_file = self.export_to_csv(stock_moves, shop_code, shop_name)
         if csv_file:
             logger.info("=" * 60)
             logger.info(f"✅ MAGASIN {shop_code} TRAITÉ AVEC SUCCÈS")
             logger.info("=" * 60)
             logger.info(f"📁 Fichier sur le réseau: {csv_file}")
-            logger.info(f"📊 Lignes exportées: {len(events):,}")
+            logger.info(f"📊 Lignes exportées: {len(stock_moves):,}")
             logger.info("=" * 60)
             return True
         else:
@@ -773,47 +771,43 @@ class ProsumaAPIProduitNonTrouveExtractor:
             return False
 
     def extract_all(self):
-        """Extrait les événements pour tous les magasins configurés"""
+        """Extrait les mouvements de stock pour tous les magasins configurés"""
+        logger = logging.getLogger(__name__)
+        
         logger.info("=" * 60)
-        logger.info("DÉBUT DE L'EXTRACTION API PROSUMA - PRODUITS NON TROUVÉS")
+        logger.info("DÉBUT DE L'EXTRACTION API PROSUMA - MOUVEMENTS DE STOCK")
         logger.info("=" * 60)
         
         # Créer le dossier réseau au début
-        network_path = self.get_network_path_for_shop("PRODUIT_NON_TROUVE")
+        network_path = self.get_network_path_for_shop("MOUVEMENT_STOCK")
         if network_path:
             logger.info(f"✅ Dossier réseau créé: {network_path}")
         else:
             logger.warning("⚠️ Impossible de créer le dossier réseau")
         
         successful_shops = 0
-        total_shops = len(self.shop_codes)
-        failed_shops = []  # Liste des magasins en échec avec leur nom
+        failed_shops = []
         
         for shop_code in self.shop_codes:
             try:
-                shop_info = self.shop_config.get(shop_code, {})
-                shop_name = shop_info.get('name', 'Nom inconnu')
-                
-                if self.extract_shop(shop_code):
+                success = self.extract_shop(shop_code)
+                if success:
                     successful_shops += 1
                 else:
-                    # Extraction échouée (connexion, authentification, etc.)
-                    failed_shops.append((shop_code, shop_name))
+                    shop_name = self.shop_config.get(shop_code, {}).get('name', 'Inconnu')
+                    failed_shops.append({'code': shop_code, 'name': shop_name})
             except Exception as e:
-                # Erreur lors de l'extraction
-                shop_info = self.shop_config.get(shop_code, {})
-                shop_name = shop_info.get('name', 'Nom inconnu')
-                failed_shops.append((shop_code, shop_name))
-                logger.error(f"❌ Erreur lors de l'extraction du magasin {shop_code}: {e}")
+                logger.error(f"❌ Erreur inattendue lors de l'extraction du magasin {shop_code}: {e}")
+                shop_name = self.shop_config.get(shop_code, {}).get('name', 'Inconnu')
+                failed_shops.append({'code': shop_code, 'name': shop_name})
         
-        # Résumé
+        # Résumé final
         logger.info("=" * 60)
         logger.info("RÉSUMÉ DE L'EXTRACTION")
         logger.info("=" * 60)
-        logger.info(f"✅ Magasins traités avec succès: {successful_shops}/{total_shops}")
-        logger.info(f"❌ Magasins en échec: {len(failed_shops)}/{total_shops}")
+        logger.info(f"✅ Magasins traités avec succès: {successful_shops}/{len(self.shop_codes)}")
+        logger.info(f"❌ Magasins en échec: {len(failed_shops)}/{len(self.shop_codes)}")
         
-        # Afficher les magasins en erreur s'il y en a
         if failed_shops:
             logger.warning("=" * 60)
             logger.warning("⚠️⚠️⚠️ EXTRACTION PARTIELLEMENT RÉUSSIE ⚠️⚠️⚠️")
@@ -821,26 +815,27 @@ class ProsumaAPIProduitNonTrouveExtractor:
             logger.warning("")
             logger.warning("📋📋📋 LISTE DES MAGASINS EN ÉCHEC 📋📋📋")
             logger.warning("=" * 60)
-            for shop_code, shop_name in failed_shops:
-                logger.warning(f"   ❌ Code magasin: {shop_code} - Nom: {shop_name}")
+            for shop in failed_shops:
+                logger.warning(f"   ❌ Code magasin: {shop['code']} - Nom: {shop['name']}")
             logger.warning("=" * 60)
             logger.warning("")
-        elif successful_shops == total_shops:
-            logger.info("=" * 60)
-            logger.info("✅✅✅ EXTRACTION COMPLÈTEMENT RÉUSSIE ✅✅✅")
-            logger.info("=" * 60)
         else:
-            logger.error("=" * 60)
-            logger.error("❌❌❌ AUCUNE EXTRACTION RÉUSSIE ❌❌❌")
-            logger.error("=" * 60)
+            logger.info("=" * 60)
+            logger.info("🎉🎉🎉 EXTRACTION COMPLÉTÉE AVEC SUCCÈS 🎉🎉🎉")
+            logger.info("=" * 60)
 
 def main():
     """Fonction principale"""
     try:
-        extractor = ProsumaAPIProduitNonTrouveExtractor()
+        extractor = ProsumaAPIMouvementStockExtractor()
         extractor.extract_all()
     except Exception as e:
         print(f"❌ Erreur fatale: {e}")
+        import traceback
+        traceback.print_exc()
+        return 1
+    return 0
 
 if __name__ == "__main__":
-    main()
+    exit(main())
+

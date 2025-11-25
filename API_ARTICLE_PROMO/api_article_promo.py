@@ -153,7 +153,7 @@ class ProsumaAPIArticlePromoExtractor:
                     return shop_data
             
             # Si pas trouvé, chercher dans la liste paginée
-            url = f"{base_url}/api/shop/"
+        url = f"{base_url}/api/shop/"
             page = 1
             while True:
                 params = {'page': page, 'page_size': 100}
@@ -166,7 +166,7 @@ class ProsumaAPIArticlePromoExtractor:
                     for shop in shops:
                         if shop.get('reference') == shop_code:
                             logger.info(f"✅ Magasin {shop_code} trouvé: {shop.get('name', 'Nom inconnu')}")
-                            return shop
+                    return shop
                     
                     if not data.get('next'):
                         break
@@ -179,7 +179,7 @@ class ProsumaAPIArticlePromoExtractor:
             
         except Exception as e:
             logger.error(f"❌ Erreur lors de la récupération des informations du magasin: {e}")
-            return None
+        return None
 
     def get_articles_with_promo(self, base_url, shop_id):
         """Récupère tous les articles avec prix promo pour un magasin donné avec pagination."""
@@ -243,16 +243,16 @@ class ProsumaAPIArticlePromoExtractor:
             
             try:
                 response = self.session.get(url, params=params, timeout=product_timeout)
-                
+
                 if response.status_code == 200:
                     response_data = response.json()
-                    results = response_data.get('results', [])
+            results = response_data.get('results', [])
                     
-                    if not results:
+            if not results:
                         logger.info(f"   ✅ Dernière page atteinte (page {page}) - Aucun enregistrement retourné")
-                        break
+                break
 
-                    all_articles.extend(results)
+            all_articles.extend(results)
                     
                     progress_percent = (page - 1) * 100 // total_pages if total_pages > 0 else 0
                     logger.info(f"   Page {page}/{total_pages} ({progress_percent}%): {len(results)} articles avec prix promo récupérés (total: {len(all_articles):,}/{total_articles:,})")
@@ -275,7 +275,7 @@ class ProsumaAPIArticlePromoExtractor:
                         logger.warning(f"⚠️ Erreur serveur, tentative de continuer...")
                         page += 1
                         continue
-                    break
+                break
                     
             except requests.exceptions.Timeout:
                 logger.error(f"❌ Timeout ({product_timeout}s) pour la page {page}.")
@@ -284,7 +284,7 @@ class ProsumaAPIArticlePromoExtractor:
                 continue
             except Exception as e:
                 logger.error(f"❌ Erreur lors de la récupération de la page {page}: {e}")
-                page += 1
+            page += 1
                 continue
         
         logger.info("=" * 60)
@@ -300,6 +300,26 @@ class ProsumaAPIArticlePromoExtractor:
         logger.info("=" * 60)
 
         return all_articles
+
+    def _flatten_value(self, value):
+        """Convertit une valeur complexe (dict, list) en chaîne JSON pour le CSV."""
+        if value is None:
+            return ''
+        elif isinstance(value, (dict, list)):
+            try:
+                return json.dumps(value, ensure_ascii=False)
+            except (TypeError, ValueError):
+                return str(value)
+        else:
+            return str(value)
+    
+    def _get_all_fields_from_articles(self, articles):
+        """Détecte tous les champs disponibles dans les articles."""
+        all_fields = set()
+        for article in articles:
+            if isinstance(article, dict):
+                all_fields.update(article.keys())
+        return sorted(list(all_fields))
 
     def export_to_csv(self, articles, shop_code, shop_name):
         """Exporte les articles avec prix promo vers un fichier CSV."""
@@ -318,47 +338,43 @@ class ProsumaAPIArticlePromoExtractor:
         filename = f'export_article_promo_{shop_code}_{timestamp}.csv'
         local_filepath = os.path.join(self.base_dir, filename)
         
-        # En-têtes CSV basés sur les champs disponibles et spécifiques aux promos
-        fieldnames = [
-            'id', 'name', 'reference', 'barcode', 'category', 'brand', 'supplier',
-            'price', 'promo_price', 'promo_start_date', 'promo_end_date',
-            'is_active', 'is_available', 'stock_quantity', 'unit', 'weight',
-            'volume', 'description', 'short_description', 'ean_codes',
-            'shop_code', 'shop_name', 'created_at', 'updated_at', 'deleted_at'
-        ]
+        # Détecter dynamiquement tous les champs disponibles dans les articles
+        if not articles:
+            logger.warning(f"⚠️ Aucun article à exporter pour le magasin {shop_code}")
+            return None
+        
+        # Récupérer tous les champs disponibles
+        api_fields = self._get_all_fields_from_articles(articles)
+        logger.info(f"📋 Champs détectés dans l'API: {len(api_fields)} champs")
+        logger.info(f"   Champs: {', '.join(api_fields[:10])}{'...' if len(api_fields) > 10 else ''}")
+        
+        # Construire la liste des en-têtes: d'abord les champs API, puis shop_code et shop_name
+        fieldnames = api_fields + ['shop_code', 'shop_name']
+        
+        # Afficher les champs spécifiques mentionnés par l'utilisateur
+        if 'ean' in api_fields:
+            logger.info(f"✅ Champ 'ean' détecté dans l'API")
+        if 'article' in api_fields:
+            logger.info(f"✅ Champ 'article' détecté dans l'API")
+        if 'barcode' in api_fields:
+            logger.info(f"✅ Champ 'barcode' détecté dans l'API")
+        if 'reference' in api_fields:
+            logger.info(f"✅ Champ 'reference' détecté dans l'API")
 
         try:
             with open(local_filepath, 'w', newline='', encoding='utf-8') as csvfile:
                 writer = csv.DictWriter(csvfile, fieldnames=fieldnames, delimiter=';')
                 writer.writeheader()
                 for article in articles:
-                    row = {
-                        'id': article.get('id'),
-                        'name': article.get('name'),
-                        'reference': article.get('reference'),
-                        'barcode': article.get('barcode'),
-                        'category': article.get('category', {}).get('name') if isinstance(article.get('category'), dict) else article.get('category'),
-                        'brand': article.get('brand', {}).get('name') if isinstance(article.get('brand'), dict) else article.get('brand'),
-                        'supplier': article.get('supplier', {}).get('name') if isinstance(article.get('supplier'), dict) else article.get('supplier'),
-                        'price': article.get('price'),
-                        'promo_price': article.get('promo_price'),
-                        'promo_start_date': article.get('promo_start_date'),
-                        'promo_end_date': article.get('promo_end_date'),
-                        'is_active': article.get('is_active'),
-                        'is_available': article.get('is_available'),
-                        'stock_quantity': article.get('stock_quantity'),
-                        'unit': article.get('unit'),
-                        'weight': article.get('weight'),
-                        'volume': article.get('volume'),
-                        'description': article.get('description'),
-                        'short_description': article.get('short_description'),
-                        'ean_codes': json.dumps(article.get('ean_codes')) if article.get('ean_codes') else '',
-                        'shop_code': shop_code,
-                        'shop_name': shop_name,
-                        'created_at': article.get('created_at'),
-                        'updated_at': article.get('updated_at'),
-                        'deleted_at': article.get('deleted_at')
-                    }
+                    row = {}
+                    # Ajouter tous les champs de l'article
+                    for field in api_fields:
+                        value = article.get(field)
+                        # Convertir les valeurs complexes en JSON
+                        row[field] = self._flatten_value(value)
+                    # Ajouter les champs supplémentaires
+                    row['shop_code'] = shop_code
+                    row['shop_name'] = shop_name
                     writer.writerow(row)
             
             logger.info(f"✅ Fichier CSV créé localement: {local_filepath}")
@@ -381,7 +397,7 @@ class ProsumaAPIArticlePromoExtractor:
                     return local_filepath
             
             try:
-                shutil.copy2(local_filepath, network_filepath)
+            shutil.copy2(local_filepath, network_filepath)
                 
                 # Vérifier que la copie a réussi
                 if os.path.exists(network_filepath):
@@ -391,9 +407,9 @@ class ProsumaAPIArticlePromoExtractor:
                     logger.info(f"   📊 Taille: {file_size:,} octets")
                     
                     # Supprimer le fichier local après vérification
-                    os.remove(local_filepath)
-                    logger.info(f"🗑️ Fichier local supprimé")
-                    return network_filepath
+            os.remove(local_filepath)
+            logger.info(f"🗑️ Fichier local supprimé")
+            return network_filepath
                 else:
                     logger.error(f"❌❌❌ LE FICHIER N'EXISTE PAS APRÈS LA COPIE ❌❌❌")
                     logger.error(f"   Chemin attendu: {network_filepath}")
