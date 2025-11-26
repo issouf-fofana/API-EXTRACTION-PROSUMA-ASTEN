@@ -598,7 +598,7 @@ class ProsumaAPICommandeReassortExtractor:
             logger.info("=" * 60)
             
             if len(all_orders) > 0:
-            logger.info(f"✅ {len(all_orders)} commandes réassort récupérées au total")
+                logger.info(f"✅ {len(all_orders)} commandes réassort récupérées au total")
             else:
                 logger.warning(f"⚠️ Aucune commande réassort récupérée")
             return all_orders
@@ -750,7 +750,7 @@ class ProsumaAPICommandeReassortExtractor:
                     # Chemin UNC, utiliser directement la concaténation avec backslash
                     network_filepath = f"{network_path}\\{filename}" if not network_path.endswith('\\') else f"{network_path}{filename}"
                 else:
-            network_filepath = os.path.join(network_path, filename)
+                    network_filepath = os.path.join(network_path, filename)
                 try:
                     # Vérifier que le dossier réseau existe
                     if not os.path.exists(network_path):
@@ -766,7 +766,7 @@ class ProsumaAPICommandeReassortExtractor:
                     # Copier le fichier
                     logger.info(f"📋 Tentative de copie vers: {network_filepath}")
                     try:
-            shutil.copy2(local_filepath, network_filepath)
+                        shutil.copy2(local_filepath, network_filepath)
                         logger.info(f"✅ Commande copy2 exécutée sans erreur")
                     except Exception as copy_ex:
                         logger.error(f"❌❌❌ ERREUR LORS DE LA COPIE ❌❌❌")
@@ -801,7 +801,7 @@ class ProsumaAPICommandeReassortExtractor:
                         logger.info(f"   ✅ Fichier vérifié et accessible")
                         logger.info(f"📁 Fichier local conservé dans EXPORT: {local_filepath}")
                         # IMPORTANT: Retourner le chemin réseau si la copie a réussi
-            return network_filepath
+                        return network_filepath
                     elif file_exists:
                         logger.warning(f"⚠️⚠️⚠️ FICHIER COPIÉ MAIS PROBLÈME DE VÉRIFICATION ⚠️⚠️⚠️")
                         logger.warning(f"   📁 Chemin réseau: {network_filepath}")
@@ -962,7 +962,7 @@ class ProsumaAPICommandeReassortExtractor:
                 if create_network_folder(shop_folder_path):
                     created_folders.append(folder_name)
                     logger.info(f"✅ Dossier créé/vérifié: {folder_name}")
-        else:
+                else:
                     logger.warning(f"⚠️ Impossible de créer le dossier: {folder_name}")
         
         logger.info(f"✅ {len(created_folders)} dossiers créés/vérifiés sur {len(self.shop_codes)} magasins")
