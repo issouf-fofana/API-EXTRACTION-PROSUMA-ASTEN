@@ -11,6 +11,7 @@ import json
 import logging
 import shutil
 import time
+import platform
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 import urllib3
@@ -22,6 +23,19 @@ from utils import load_shop_config, build_network_path, create_network_folder, S
 
 # Désactiver les warnings SSL
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+# Détecter l'OS pour adapter les chemins
+def get_os_type():
+    """Détecte le système d'exploitation"""
+    system = platform.system().lower()
+    if system == 'linux':
+        return 'linux'
+    elif system == 'darwin':
+        return 'macos'
+    elif system == 'windows':
+        return 'windows'
+    else:
+        return 'unknown'
 
 class ProsumaAPICommandeReassortExtractor:
     def __init__(self):
@@ -38,7 +52,20 @@ class ProsumaAPICommandeReassortExtractor:
         
         # Configuration du dossier de téléchargement
         self.base_dir = os.path.dirname(os.path.abspath(__file__))
-        self.network_folder_base = os.getenv('DOWNLOAD_FOLDER_BASE', '\\10.0.70.169\\share\\FOFANA')
+        
+        # Détecter l'OS et adapter le chemin réseau
+        self.os_type = get_os_type()
+        
+        # Configurer le chemin réseau selon l'OS
+        if self.os_type == 'linux':
+            # Sur Linux, utiliser un chemin monté ou configurable
+            self.network_folder_base = os.getenv('DOWNLOAD_FOLDER_BASE', '/mnt/share/FOFANA')
+        elif self.os_type == 'macos':
+            # Sur macOS, utiliser /Volumes
+            self.network_folder_base = os.getenv('DOWNLOAD_FOLDER_BASE', '/Volumes/share/FOFANA')
+        else:
+            # Sur Windows, utiliser le chemin UNC
+            self.network_folder_base = os.getenv('DOWNLOAD_FOLDER_BASE', '\\\\10.0.70.169\\share\\FOFANA')
         
         # Configuration des magasins
         self.shop_config = load_shop_config(os.path.dirname(self.base_dir))
@@ -195,34 +222,45 @@ class ProsumaAPICommandeReassortExtractor:
     def get_network_path_for_shop(self, shop_code):
         """Retourne le chemin réseau pour un magasin spécifique dans ASTEN"""
         try:
-            # Chemin de base: \\10.0.70.169\share\FOFANA\Etats Natacha\Commande\PRESENTATION_COMMANDE\ASTEN
-            base = self.network_folder_base.replace('/', '\\')
-            if base.endswith('\\'):
-                base = base[:-1]
-            
-            asten_path = f"{base}\\Etats Natacha\\Commande\\PRESENTATION_COMMANDE\\ASTEN"
-            
             # Obtenir le nom du dossier pour ce magasin
             folder_name = self.get_shop_folder_name(shop_code)
             if not folder_name:
                 logger.warning(f"⚠️ Impossible de déterminer le nom du dossier pour le magasin {shop_code}")
                 return None
             
-            # Chemin complet: ASTEN\{NOM_DOSSIER}
-            network_path = os.path.join(asten_path, folder_name)
-            logger.debug(f"Chemin réseau calculé pour {shop_code}: {network_path}")
+            # Construire le chemin selon l'OS
+            if self.os_type in ['linux', 'macos']:
+                # Linux/macOS : Utiliser des slashes /
+                # Chemin: /mnt/share/FOFANA/Etats Natacha/Commande/PRESENTATION_COMMANDE/ASTEN/{MAGASIN}
+                base = self.network_folder_base
+                if base.endswith('/'):
+                    base = base[:-1]
+                asten_path = f"{base}/Etats Natacha/Commande/PRESENTATION_COMMANDE/ASTEN"
+                network_path = os.path.join(asten_path, folder_name)
+            else:
+                # Windows : Utiliser des backslashes \
+                # Chemin: \\10.0.70.169\share\FOFANA\Etats Natacha\Commande\PRESENTATION_COMMANDE\ASTEN\{MAGASIN}
+                base = self.network_folder_base.replace('/', '\\')
+                if base.endswith('\\'):
+                    base = base[:-1]
+                asten_path = f"{base}\\Etats Natacha\\Commande\\PRESENTATION_COMMANDE\\ASTEN"
+                network_path = os.path.join(asten_path, folder_name)
+            
+            logger.debug(f"Chemin réseau calculé pour {shop_code} ({self.os_type}): {network_path}")
             
             # Créer le dossier s'il n'existe pas
             if create_network_folder(network_path):
                 # Vérifier que le dossier existe vraiment
                 if os.path.exists(network_path):
-                    logger.debug(f"✅ Dossier réseau vérifié: {network_path}")
+                    logger.info(f"✅ Dossier réseau vérifié: {network_path}")
                     return network_path
                 else:
                     logger.warning(f"⚠️ Le dossier réseau n'existe pas après création: {network_path}")
+                    logger.warning(f"   Sur Linux, assurez-vous que le partage est monté sur: {self.network_folder_base}")
                     return None
             else:
                 logger.warning(f"⚠️ Impossible de créer le dossier réseau: {network_path}")
+                logger.warning(f"   Sur Linux, vérifiez que le partage est monté: {self.network_folder_base}")
                 return None
         except Exception as e:
             logger.error(f"❌ Erreur lors de la création du chemin réseau pour {shop_code}: {e}")
@@ -232,11 +270,21 @@ class ProsumaAPICommandeReassortExtractor:
         """Retourne le chemin réseau pour les logs"""
         if not self.network_folder_base:
             return None
-        # Chemin: \\10.0.70.169\share\FOFANA\Etats Natacha\SCRIPT\LOG
-        base = self.network_folder_base.replace('/', '\\')
-        if base.endswith('\\'):
-            base = base[:-1]
-        log_path = f"{base}\\Etats Natacha\\SCRIPT\\LOG"
+        
+        # Construire le chemin selon l'OS
+        if self.os_type in ['linux', 'macos']:
+            # Linux/macOS : Utiliser des slashes /
+            base = self.network_folder_base
+            if base.endswith('/'):
+                base = base[:-1]
+            log_path = f"{base}/Etats Natacha/SCRIPT/LOG"
+        else:
+            # Windows : Utiliser des backslashes \
+            base = self.network_folder_base.replace('/', '\\')
+            if base.endswith('\\'):
+                base = base[:-1]
+            log_path = f"{base}\\Etats Natacha\\SCRIPT\\LOG"
+        
         if create_network_folder(log_path):
             return log_path
         return None
@@ -942,16 +990,30 @@ class ProsumaAPICommandeReassortExtractor:
         logger.info("=" * 60)
         logger.info("CRÉATION DES DOSSIERS RÉSEAU")
         logger.info("=" * 60)
-        base = self.network_folder_base.replace('/', '\\')
-        if base.endswith('\\'):
-            base = base[:-1]
-        asten_path = f"{base}\\Etats Natacha\\Commande\\PRESENTATION_COMMANDE\\ASTEN"
+        logger.info(f"OS détecté: {self.os_type}")
+        logger.info(f"Chemin de base: {self.network_folder_base}")
+        
+        # Construire le chemin ASTEN selon l'OS
+        if self.os_type in ['linux', 'macos']:
+            # Linux/macOS : Utiliser des slashes /
+            base = self.network_folder_base
+            if base.endswith('/'):
+                base = base[:-1]
+            asten_path = f"{base}/Etats Natacha/Commande/PRESENTATION_COMMANDE/ASTEN"
+        else:
+            # Windows : Utiliser des backslashes \
+            base = self.network_folder_base.replace('/', '\\')
+            if base.endswith('\\'):
+                base = base[:-1]
+            asten_path = f"{base}\\Etats Natacha\\Commande\\PRESENTATION_COMMANDE\\ASTEN"
         
         # Créer le dossier ASTEN s'il n'existe pas
         if create_network_folder(asten_path):
             logger.info(f"✅ Dossier ASTEN créé/vérifié: {asten_path}")
         else:
             logger.warning(f"⚠️ Impossible de créer le dossier ASTEN: {asten_path}")
+            if self.os_type in ['linux', 'macos']:
+                logger.warning(f"   Sur Linux, assurez-vous que le partage SMB est monté sur: {self.network_folder_base}")
         
         # Créer les dossiers pour chaque magasin
         created_folders = []
