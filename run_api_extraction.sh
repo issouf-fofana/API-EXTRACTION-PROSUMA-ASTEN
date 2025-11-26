@@ -83,28 +83,289 @@ trap 'handle_interrupt' INT
 # Définir la taille du terminal au démarrage
 set_terminal_size
 
-# Chemin du dossier réseau partagé (code source)
-# Format Windows UNC: \\10.0.70.169\share\FOFANA\Etats Natacha\SCRIPT\EXTRACTION_PROSUMA
-NETWORK_SHARE="//10.0.70.169/share/FOFANA/Etats Natacha/SCRIPT/EXTRACTION_PROSUMA"
+# ============================================================================
+# Configuration AUTOMATIQUE et INTELLIGENTE selon l'OS
+# Ce script fait TOUT automatiquement : détection, installation, configuration
+# ============================================================================
 
-# Convertir le chemin réseau selon l'OS
-if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" || "$OSTYPE" == "win32" ]] || [[ -n "$MSYSTEM" ]]; then
-    # Windows (Git Bash, Cygwin, MSYS2)
-    # Essayer plusieurs formats de chemins UNC
-    if [ -d "//10.0.70.169/share/FOFANA/Etats Natacha/SCRIPT/EXTRACTION_PROSUMA" ] 2>/dev/null; then
-        PROJECT_PATH="//10.0.70.169/share/FOFANA/Etats Natacha/SCRIPT/EXTRACTION_PROSUMA"
-    elif [ -d "\\\\10.0.70.169\\share\\FOFANA\\Etats Natacha\\SCRIPT\\EXTRACTION_PROSUMA" ] 2>/dev/null; then
-        PROJECT_PATH="\\\\10.0.70.169\\share\\FOFANA\\Etats Natacha\\SCRIPT\\EXTRACTION_PROSUMA"
-    elif [ -d "/c/Users/Public/EXTRACTION_PROSUMA" ] 2>/dev/null; then
-        PROJECT_PATH="/c/Users/Public/EXTRACTION_PROSUMA"
+# Détecter l'OS
+detect_os() {
+    if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+        echo "linux"
+    elif [[ "$OSTYPE" == "darwin"* ]]; then
+        echo "macos"
+    elif [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" || "$OSTYPE" == "win32" ]] || [[ -n "$MSYSTEM" ]]; then
+        echo "windows"
     else
-        # Utiliser le chemin UNC directement (sera testé plus tard)
-        PROJECT_PATH="//10.0.70.169/share/FOFANA/Etats Natacha/SCRIPT/EXTRACTION_PROSUMA"
+        echo "unknown"
     fi
-else
-    # macOS/Linux - utiliser le chemin tel quel
-    PROJECT_PATH="$NETWORK_SHARE"
+}
+
+# Détecter la distribution Linux et le gestionnaire de paquets
+detect_linux_distro() {
+    if [ -f /etc/redhat-release ]; then
+        # Red Hat, CentOS, Fedora
+        if command -v dnf &> /dev/null; then
+            echo "redhat-dnf"
+        elif command -v yum &> /dev/null; then
+            echo "redhat-yum"
+        else
+            echo "redhat"
+        fi
+    elif [ -f /etc/debian_version ]; then
+        # Debian, Ubuntu
+        echo "debian"
+    elif [ -f /etc/fedora-release ]; then
+        echo "fedora"
+    else
+        echo "unknown"
+    fi
+}
+
+# Installer les dépendances système nécessaires (Linux uniquement)
+install_system_dependencies() {
+    local distro="$1"
+    
+    echo "🔧 Vérification des dépendances système..."
+    
+    case "$distro" in
+        redhat-dnf)
+            echo "   📦 Distribution: Red Hat/CentOS/Fedora (dnf)"
+            # Vérifier si cifs-utils est installé
+            if ! rpm -qa | grep -q cifs-utils; then
+                echo "   ⚙️  Installation de cifs-utils avec dnf..."
+                sudo dnf install -y cifs-utils 2>/dev/null || echo "   ⚠️  Installation manuelle requise: sudo dnf install cifs-utils"
+            else
+                echo "   ✅ cifs-utils déjà installé"
+            fi
+            ;;
+        redhat-yum)
+            echo "   📦 Distribution: Red Hat/CentOS (yum)"
+            if ! rpm -qa | grep -q cifs-utils; then
+                echo "   ⚙️  Installation de cifs-utils avec yum..."
+                sudo yum install -y cifs-utils 2>/dev/null || echo "   ⚠️  Installation manuelle requise: sudo yum install cifs-utils"
+            else
+                echo "   ✅ cifs-utils déjà installé"
+            fi
+            ;;
+        debian)
+            echo "   📦 Distribution: Debian/Ubuntu"
+            if ! dpkg -l | grep -q cifs-utils; then
+                echo "   ⚙️  Installation de cifs-utils avec apt-get..."
+                sudo apt-get update >/dev/null 2>&1
+                sudo apt-get install -y cifs-utils 2>/dev/null || echo "   ⚠️  Installation manuelle requise: sudo apt-get install cifs-utils"
+            else
+                echo "   ✅ cifs-utils déjà installé"
+            fi
+            ;;
+        fedora)
+            echo "   📦 Distribution: Fedora"
+            if ! rpm -qa | grep -q cifs-utils; then
+                echo "   ⚙️  Installation de cifs-utils avec dnf..."
+                sudo dnf install -y cifs-utils 2>/dev/null || echo "   ⚠️  Installation manuelle requise: sudo dnf install cifs-utils"
+            else
+                echo "   ✅ cifs-utils déjà installé"
+            fi
+            ;;
+        *)
+            echo "   ⚠️  Distribution inconnue, vérification manuelle requise"
+            ;;
+    esac
+}
+
+# Configuration automatique du chemin projet (avec installation si nécessaire)
+configure_project_path() {
+    local os_type="$1"
+    local distro="$2"
+    
+    if [ "$os_type" = "linux" ]; then
+        # ==================== LINUX - CONFIGURATION AUTOMATIQUE ====================
+        echo "🐧 Système détecté: Linux ($distro)"
+        echo
+        
+        # Installer les dépendances nécessaires
+        install_system_dependencies "$distro"
+        echo
+        
+        # Vérifier les chemins possibles dans l'ordre de priorité
+        # 1. Chemin local existant
+        if [ -d "$HOME/API-EXTRACTION-PROSUMA-ASTEN" ] && [ -f "$HOME/API-EXTRACTION-PROSUMA-ASTEN/requirements.txt" ]; then
+            PROJECT_PATH="$HOME/API-EXTRACTION-PROSUMA-ASTEN"
+            echo "✅ Installation locale trouvée: $PROJECT_PATH"
+            return 0
+        fi
+        
+        # 2. Point de montage existant
+        if [ -d "/mnt/share/FOFANA/Etats Natacha/SCRIPT/EXTRACTION_PROSUMA" ] && [ -f "/mnt/share/FOFANA/Etats Natacha/SCRIPT/EXTRACTION_PROSUMA/requirements.txt" ]; then
+            PROJECT_PATH="/mnt/share/FOFANA/Etats Natacha/SCRIPT/EXTRACTION_PROSUMA"
+            echo "✅ Montage réseau trouvé: $PROJECT_PATH"
+            return 0
+        fi
+        
+        # 3. Répertoire courant
+        if [ -f "$(pwd)/requirements.txt" ] && [ -f "$(pwd)/API_COMMANDE/api_commande.py" ]; then
+            PROJECT_PATH="$(pwd)"
+            echo "✅ Exécution depuis le répertoire du projet: $PROJECT_PATH"
+            return 0
+        fi
+        
+        # 4. Aucun chemin trouvé → Installation automatique
+        echo "⚠️  Aucune installation trouvée"
+        echo
+        echo "🔧 CONFIGURATION AUTOMATIQUE - PREMIÈRE INSTALLATION"
+        echo "============================================================"
+        echo
+        echo "Deux options possibles :"
+        echo "   1. Installation locale (RECOMMANDÉ) - Copie sur ce serveur"
+        echo "   2. Montage réseau - Accès direct au partage Windows"
+        echo
+        
+        # Si on exécute depuis un dossier qui contient les fichiers source
+        if [ -f "$(pwd)/requirements.txt" ]; then
+            echo "✅ Code source détecté dans le répertoire courant"
+            echo "   → Installation locale automatique..."
+            echo
+            
+            TARGET_PATH="$HOME/API-EXTRACTION-PROSUMA-ASTEN"
+            mkdir -p "$TARGET_PATH"
+            
+            echo "📂 Copie des fichiers vers $TARGET_PATH..."
+            cp -r "$(pwd)"/* "$TARGET_PATH/" 2>/dev/null || {
+                # Si la copie échoue (car on est déjà dans le bon dossier)
+                if [ "$(pwd)" != "$TARGET_PATH" ]; then
+                    rsync -av --exclude='env*' --exclude='__pycache__' --exclude='*.pyc' "$(pwd)/" "$TARGET_PATH/" 2>/dev/null || {
+                        echo "❌ Erreur lors de la copie"
+                        PROJECT_PATH="$(pwd)"
+                        return 1
+                    }
+                fi
+            }
+            
+            PROJECT_PATH="$TARGET_PATH"
+            echo "✅ Installation locale terminée: $PROJECT_PATH"
+            return 0
+        else
+            # Proposer le montage réseau
+            echo "💡 Pour la première utilisation, veuillez :"
+            echo "   1. Copier manuellement les fichiers dans $HOME/API-EXTRACTION-PROSUMA-ASTEN"
+            echo "   2. OU monter le partage réseau sur /mnt/share/"
+            echo "   3. OU exécuter ce script depuis le dossier source"
+            echo
+            read -p "Voulez-vous tenter un montage réseau maintenant ? (O/N): " -n 1 -r
+            echo
+            if [[ $REPLY =~ ^[OoYy]$ ]]; then
+                setup_network_mount "$distro"
+            else
+                PROJECT_PATH="$HOME/API-EXTRACTION-PROSUMA-ASTEN"
+                echo "⚠️  Configuration manuelle requise"
+                return 1
+            fi
+        fi
+        
+    elif [ "$os_type" = "macos" ]; then
+        # ==================== macOS ====================
+        echo "🍎 Système détecté: macOS"
+        
+        if [ -d "/Volumes/share/FOFANA/Etats Natacha/SCRIPT/EXTRACTION_PROSUMA" ]; then
+            PROJECT_PATH="/Volumes/share/FOFANA/Etats Natacha/SCRIPT/EXTRACTION_PROSUMA"
+            echo "   → Volume réseau: $PROJECT_PATH"
+        elif [ -d "$HOME/API-EXTRACTION-PROSUMA-ASTEN" ]; then
+            PROJECT_PATH="$HOME/API-EXTRACTION-PROSUMA-ASTEN"
+            echo "   → Chemin local: $PROJECT_PATH"
+        elif [ -f "$(pwd)/requirements.txt" ]; then
+            PROJECT_PATH="$(pwd)"
+            echo "   → Répertoire courant: $PROJECT_PATH"
+        else
+            PROJECT_PATH="$HOME/API-EXTRACTION-PROSUMA-ASTEN"
+            echo "   ⚠️  Chemin par défaut: $PROJECT_PATH"
+        fi
+        
+    elif [ "$os_type" = "windows" ]; then
+        # ==================== WINDOWS ====================
+        echo "🪟 Système détecté: Windows"
+        
+        if [ -d "//10.0.70.169/share/FOFANA/Etats Natacha/SCRIPT/EXTRACTION_PROSUMA" ] 2>/dev/null; then
+            PROJECT_PATH="//10.0.70.169/share/FOFANA/Etats Natacha/SCRIPT/EXTRACTION_PROSUMA"
+            echo "   → Réseau UNC: $PROJECT_PATH"
+        elif [ -d "\\\\10.0.70.169\\share\\FOFANA\\Etats Natacha\\SCRIPT\\EXTRACTION_PROSUMA" ] 2>/dev/null; then
+            PROJECT_PATH="\\\\10.0.70.169\\share\\FOFANA\\Etats Natacha\\SCRIPT\\EXTRACTION_PROSUMA"
+            echo "   → Réseau UNC (backslash): $PROJECT_PATH"
+        elif [ -d "/c/Users/Public/EXTRACTION_PROSUMA" ] 2>/dev/null; then
+            PROJECT_PATH="/c/Users/Public/EXTRACTION_PROSUMA"
+            echo "   → Local: $PROJECT_PATH"
+        elif [ -f "$(pwd)/requirements.txt" ]; then
+            PROJECT_PATH="$(pwd)"
+            echo "   → Répertoire courant: $PROJECT_PATH"
+        else
+            PROJECT_PATH="//10.0.70.169/share/FOFANA/Etats Natacha/SCRIPT/EXTRACTION_PROSUMA"
+            echo "   → Réseau par défaut: $PROJECT_PATH"
+        fi
+    else
+        # ==================== AUTRE OS ====================
+        echo "❓ Système inconnu: $OSTYPE"
+        PROJECT_PATH="$(pwd)"
+        echo "   → Répertoire courant: $PROJECT_PATH"
+    fi
+}
+
+# Fonction pour monter automatiquement le partage réseau (Linux)
+setup_network_mount() {
+    local distro="$1"
+    
+    echo
+    echo "🌐 MONTAGE DU PARTAGE RÉSEAU"
+    echo "============================================================"
+    
+    MOUNT_POINT="/mnt/share/FOFANA/Etats Natacha/SCRIPT/EXTRACTION_PROSUMA"
+    
+    # Créer le point de montage
+    if [ ! -d "$MOUNT_POINT" ]; then
+        echo "📁 Création du point de montage..."
+        sudo mkdir -p "$MOUNT_POINT" || {
+            echo "❌ Impossible de créer le point de montage"
+            return 1
+        }
+    fi
+    
+    # Vérifier si déjà monté
+    if mount | grep -q "$MOUNT_POINT"; then
+        echo "✅ Partage déjà monté"
+        PROJECT_PATH="$MOUNT_POINT"
+        return 0
+    fi
+    
+    # Demander les identifiants
+    echo "🔐 Identifiants réseau Windows:"
+    read -p "Nom d'utilisateur: " NET_USER
+    read -sp "Mot de passe: " NET_PASS
+    echo
+    
+    # Monter le partage
+    echo "🔄 Montage en cours..."
+    SHARE_PATH="//10.0.70.169/share/FOFANA/Etats Natacha/SCRIPT/EXTRACTION_PROSUMA"
+    
+    sudo mount -t cifs "$SHARE_PATH" "$MOUNT_POINT" -o "username=$NET_USER,password=$NET_PASS,uid=$(id -u),gid=$(id -g),file_mode=0755,dir_mode=0755" 2>/dev/null
+    
+    if [ $? -eq 0 ]; then
+        echo "✅ Montage réussi: $MOUNT_POINT"
+        PROJECT_PATH="$MOUNT_POINT"
+        return 0
+    else
+        echo "❌ Échec du montage"
+        echo "   Vérifiez vos identifiants et la connectivité réseau"
+        return 1
+    fi
+}
+
+# Exécuter la configuration
+DETECTED_OS=$(detect_os)
+LINUX_DISTRO=""
+
+if [ "$DETECTED_OS" = "linux" ]; then
+    LINUX_DISTRO=$(detect_linux_distro)
 fi
+
+configure_project_path "$DETECTED_OS" "$LINUX_DISTRO"
 
 # Environnement virtuel local (créé sur chaque PC)
 ENV_NAME="env_Api_Extraction_Alien"

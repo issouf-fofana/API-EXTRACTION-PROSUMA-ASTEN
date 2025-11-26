@@ -1,0 +1,116 @@
+================================================================================
+   INSTALLATION RAPIDE SUR LINUX - API EXTRACTION PROSUMA ASTEN
+================================================================================
+
+👤 Utilisateur: fofana@proextrasten
+📂 Emplacement actuel: ~/API-EXTRACTION-PROSUMA-ASTEN
+
+================================================================================
+   ÉTAPE 1 : RENDRE LES SCRIPTS EXÉCUTABLES
+================================================================================
+
+Copiez-collez cette commande dans votre terminal :
+
+chmod +x *.sh
+
+================================================================================
+   ÉTAPE 2 : INSTALLER LE CODE LOCALEMENT (RECOMMANDÉ)
+================================================================================
+
+Copiez-collez cette commande :
+
+./setup_linux_local.sh
+
+Ensuite, suivez les instructions à l'écran.
+Choisissez l'option 1 si vous êtes déjà dans le bon dossier.
+
+================================================================================
+   ÉTAPE 3 : LANCER L'EXTRACTEUR
+================================================================================
+
+Copiez-collez ces commandes :
+
+cd ~/API-EXTRACTION-PROSUMA-ASTEN
+./run_api_extraction.sh
+
+================================================================================
+   ALTERNATIVE : MONTAGE RÉSEAU (si vous préférez)
+================================================================================
+
+Au lieu de l'étape 2, vous pouvez monter le partage réseau :
+
+./setup_linux_mount.sh
+
+Ensuite, suivez les instructions à l'écran.
+
+================================================================================
+   PLANIFICATION AUTOMATIQUE (OPTIONNEL)
+================================================================================
+
+Pour exécuter tous les jours à 8h00 automatiquement :
+
+crontab -e
+
+Puis ajoutez cette ligne à la fin du fichier :
+
+0 8 * * * cd ~/API-EXTRACTION-PROSUMA-ASTEN && ./run_commande_reassort.sh >> ~/extraction.log 2>&1
+
+Sauvegardez et quittez (Ctrl+X, puis Y, puis Entrée).
+
+================================================================================
+   VÉRIFICATION RAPIDE
+================================================================================
+
+Vérifiez que tout est OK :
+
+# 1. Vérifier que les fichiers sont là
+ls -l ~/API-EXTRACTION-PROSUMA-ASTEN
+
+# 2. Vérifier que Python est installé
+python3 --version
+
+# 3. Lancer un test
+cd ~/API-EXTRACTION-PROSUMA-ASTEN
+./run_api_extraction.sh
+
+================================================================================
+   EN CAS DE PROBLÈME
+================================================================================
+
+Problème : "Permission denied"
+Solution : chmod +x *.sh
+
+Problème : "Python not found"
+Solution : sudo apt-get install python3 python3-venv python3-pip
+
+Problème : "Le dossier n'est pas accessible"
+Solution : Vous êtes au bon endroit ? Faites : pwd
+           Sinon : cd ~/API-EXTRACTION-PROSUMA-ASTEN
+
+Problème : "cifs-utils not found"
+Solution : sudo apt-get install cifs-utils
+
+================================================================================
+   RÉSUMÉ ULTRA-RAPIDE
+================================================================================
+
+Si vous êtes déjà dans le dossier ~/API-EXTRACTION-PROSUMA-ASTEN :
+
+chmod +x *.sh
+./run_api_extraction.sh
+
+C'EST TOUT ! 🚀
+
+================================================================================
+   AIDE
+================================================================================
+
+Pour plus d'informations :
+- Guide complet : cat README_LINUX.md
+- Démarrage rapide : cat QUICK_START.md
+- Modifications : cat CHANGELOG_OS_DETECTION.md
+
+================================================================================
+   CRÉÉ PAR ALIEN POUR ASTEN 👽
+================================================================================
+

@@ -1,0 +1,252 @@
+================================================================================
+           GUIDE ULTRA-RAPIDE POUR RED HAT / CENTOS / FEDORA
+================================================================================
+
+Utilisateur : fofana@proextrasten
+Système : Red Hat avec dnf
+
+================================================================================
+   INSTALLATION EN 3 COMMANDES !
+================================================================================
+
+# 1. Rendre le script exécutable
+chmod +x run_api_extraction.sh run_commande_reassort.sh
+
+# 2. Lancer le script - TERMINÉ !
+./run_api_extraction.sh
+
+# C'EST TOUT ! Le script fait automatiquement :
+#   ✅ Détecte Red Hat + dnf
+#   ✅ Installe cifs-utils si nécessaire
+#   ✅ Copie les fichiers dans ~/API-EXTRACTION-PROSUMA-ASTEN
+#   ✅ Configure Python
+#   ✅ Lance l'extracteur
+
+================================================================================
+   CE QUE VOUS VERREZ
+================================================================================
+
+🐧 Système détecté: Linux (redhat-dnf)
+
+🔧 Vérification des dépendances système...
+   📦 Distribution: Red Hat/CentOS/Fedora (dnf)
+   ⚙️  Installation de cifs-utils avec dnf...
+   ✅ cifs-utils installé
+
+✅ Code source détecté - Installation locale automatique...
+📂 Copie vers /home/fofana/API-EXTRACTION-PROSUMA-ASTEN...
+✅ Installation terminée
+
+============================================================
+           API EXTRACTION PROSUMA - EXTRACTEUR UNIFIÉ
+============================================================
+
+[Menu interactif s'affiche]
+
+================================================================================
+   AUTOMATISATION (OPTIONNEL)
+================================================================================
+
+Pour exécuter automatiquement tous les jours à 8h00 :
+
+crontab -e
+
+# Ajouter cette ligne :
+0 8 * * * cd ~/API-EXTRACTION-PROSUMA-ASTEN && ./run_commande_reassort.sh >> ~/extraction.log 2>&1
+
+# Sauvegarder et quitter (ESC, puis :wq, puis Entrée)
+
+================================================================================
+   DIFFÉRENCES AVEC L'ANCIENNE VERSION
+================================================================================
+
+AVANT (Version 2.0) :
+   ❌ Il fallait lancer setup_linux_local.sh d'abord
+   ❌ Puis lancer run_api_extraction.sh
+   ❌ Deux scripts séparés
+
+MAINTENANT (Version 3.0) :
+   ✅ UN SEUL SCRIPT FAIT TOUT !
+   ✅ ./run_api_extraction.sh
+   ✅ Installation + configuration + lancement automatiques
+
+================================================================================
+   NOUVEAUTÉS AUTOMATIQUES
+================================================================================
+
+Le script détecte AUTOMATIQUEMENT :
+   ✅ Votre OS (Linux)
+   ✅ Votre distribution (Red Hat)
+   ✅ Votre gestionnaire de paquets (dnf)
+
+Le script installe AUTOMATIQUEMENT :
+   ✅ cifs-utils (si pas déjà installé)
+   ✅ Dépendances Python
+
+Le script configure AUTOMATIQUEMENT :
+   ✅ Installation locale dans ~/API-EXTRACTION-PROSUMA-ASTEN
+   ✅ Environnement virtuel Python
+   ✅ Tous les modules nécessaires
+
+================================================================================
+   VÉRIFICATIONS À CHAQUE LANCEMENT
+================================================================================
+
+À chaque fois que vous lancez ./run_api_extraction.sh :
+   ✅ Vérifie que cifs-utils est installé
+   ✅ Vérifie l'installation locale
+   ✅ Vérifie Python et pip
+   ✅ Met à jour les dépendances si nécessaire
+
+================================================================================
+   COMMANDES UTILES
+================================================================================
+
+# Lancer l'extracteur interactif (menu)
+./run_api_extraction.sh
+
+# Lancer extraction automatique commandes réassort
+./run_commande_reassort.sh
+
+# Voir l'installation
+ls -l ~/API-EXTRACTION-PROSUMA-ASTEN
+
+# Voir les logs (si configuré avec cron)
+tail -f ~/extraction.log
+
+# Vérifier votre distribution
+cat /etc/redhat-release
+
+# Vérifier dnf
+command -v dnf
+
+================================================================================
+   STRUCTURE DES FICHIERS APRÈS INSTALLATION
+================================================================================
+
+~/API-EXTRACTION-PROSUMA-ASTEN/
+├── run_api_extraction.sh          ← Script principal (menu)
+├── run_commande_reassort.sh       ← Script automatique
+├── config.env                     ← Configuration
+├── magasins.json                  ← Liste des magasins
+├── requirements.txt               ← Dépendances Python
+├── API_COMMANDE/                  ← Module Commandes
+├── API_COMMANDE_DIRECTE/          ← Module Commandes directes
+├── API_COMMANDE_REASSORT/         ← Module Commandes réassort
+├── API_BASE_ARTICLE/              ← Module Articles
+├── API_PRODUIT_NON_TROUVE/        ← Module Produits non trouvés
+└── ... (14 modules au total)
+
+================================================================================
+   SUPPORT DNF (RED HAT 8+)
+================================================================================
+
+Votre système Red Hat utilise DNF automatiquement détecté !
+
+Commandes utilisées automatiquement par le script :
+   sudo dnf install -y cifs-utils
+
+Si vous êtes sur Red Hat 7 (yum), le script le détectera et utilisera :
+   sudo yum install -y cifs-utils
+
+================================================================================
+   DÉPANNAGE RAPIDE
+================================================================================
+
+Problème : "Permission denied"
+Solution : chmod +x run_api_extraction.sh
+
+Problème : "Python not found"
+Solution : sudo dnf install python3
+
+Problème : "cifs-utils installation failed"
+Solution : sudo dnf install -y cifs-utils (manuellement)
+
+Problème : "Le dossier n'est pas accessible"
+Solution : Vous êtes dans le bon dossier ?
+          cd ~/API-EXTRACTION-PROSUMA-ASTEN
+
+================================================================================
+   PREMIÈRE UTILISATION - WORKFLOW COMPLET
+================================================================================
+
+Étape 1 : Copier les fichiers sur le serveur Red Hat
+   # Depuis votre PC Windows (avec WinSCP, scp, ou autre)
+   # Copiez tout le dossier EXTRACTION_PROSUMA
+
+Étape 2 : Se connecter au serveur
+   ssh fofana@proextrasten
+
+Étape 3 : Aller dans le dossier
+   cd ~/EXTRACTION_PROSUMA
+   # OU si vous l'avez copié ailleurs
+   cd /chemin/vers/EXTRACTION_PROSUMA
+
+Étape 4 : Rendre exécutable
+   chmod +x *.sh
+
+Étape 5 : Lancer
+   ./run_api_extraction.sh
+
+Étape 6 : C'est terminé !
+   Le script fait TOUT automatiquement
+
+================================================================================
+   EXTRACTION AUTOMATIQUE QUOTIDIENNE
+================================================================================
+
+Configuration en 3 étapes :
+
+1. Créer un dossier pour les logs
+   mkdir -p ~/logs
+
+2. Configurer cron
+   crontab -e
+
+3. Ajouter cette ligne pour exécution à 8h00 tous les jours
+   0 8 * * * cd ~/API-EXTRACTION-PROSUMA-ASTEN && ./run_commande_reassort.sh >> ~/logs/extraction_$(date +\%Y\%m\%d).log 2>&1
+
+4. Sauvegarder et quitter
+   ESC puis :wq puis ENTRÉE (dans vi/vim)
+   ou CTRL+X puis Y puis ENTRÉE (dans nano)
+
+5. Vérifier que c'est configuré
+   crontab -l
+
+================================================================================
+   RÉSUMÉ ULTRA-RAPIDE
+================================================================================
+
+1. chmod +x *.sh
+2. ./run_api_extraction.sh
+3. TERMINÉ !
+
+Le script fait TOUT automatiquement :
+   ✅ Détection système
+   ✅ Installation dépendances (dnf)
+   ✅ Configuration chemins
+   ✅ Installation locale
+   ✅ Lancement extracteur
+
+================================================================================
+   SUPPORT
+================================================================================
+
+Documentations disponibles :
+   - NOUVEAU_README_TOUT_EN_UN.md  (Guide complet version 3.0)
+   - README_LINUX.md                (Guide Linux détaillé)
+   - QUICK_START.md                 (Démarrage rapide multi-OS)
+
+Créateur : Alien 👽
+Système : Red Hat / CentOS / Fedora avec dnf
+Version : 3.0 - TOUT-EN-UN Auto-Install
+
+================================================================================
+   BON COURAGE !
+================================================================================
+
+Vous êtes prêt ! Lancez simplement :
+   ./run_api_extraction.sh
+
+Et le script fait le reste automatiquement ! 🚀
+

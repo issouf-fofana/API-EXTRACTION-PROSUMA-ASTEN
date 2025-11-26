@@ -74,28 +74,184 @@ trap 'handle_interrupt' INT
 # Définir la taille du terminal au démarrage
 set_terminal_size
 
-# Chemin du dossier réseau partagé (code source)
-# Format Windows UNC: \\10.0.70.169\share\FOFANA\Etats Natacha\SCRIPT\EXTRACTION_PROSUMA
-NETWORK_SHARE="//10.0.70.169/share/FOFANA/Etats Natacha/SCRIPT/EXTRACTION_PROSUMA"
+# ============================================================================
+# Configuration AUTOMATIQUE et INTELLIGENTE selon l'OS
+# Ce script fait TOUT automatiquement : détection, installation, configuration
+# ============================================================================
 
-# Convertir le chemin réseau selon l'OS
-if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" || "$OSTYPE" == "win32" ]] || [[ -n "$MSYSTEM" ]]; then
-    # Windows (Git Bash, Cygwin, MSYS2)
-    # Essayer plusieurs formats de chemins UNC
-    if [ -d "//10.0.70.169/share/FOFANA/Etats Natacha/SCRIPT/EXTRACTION_PROSUMA" ] 2>/dev/null; then
-        PROJECT_PATH="//10.0.70.169/share/FOFANA/Etats Natacha/SCRIPT/EXTRACTION_PROSUMA"
-    elif [ -d "\\\\10.0.70.169\\share\\FOFANA\\Etats Natacha\\SCRIPT\\EXTRACTION_PROSUMA" ] 2>/dev/null; then
-        PROJECT_PATH="\\\\10.0.70.169\\share\\FOFANA\\Etats Natacha\\SCRIPT\\EXTRACTION_PROSUMA"
-    elif [ -d "/c/Users/Public/EXTRACTION_PROSUMA" ] 2>/dev/null; then
-        PROJECT_PATH="/c/Users/Public/EXTRACTION_PROSUMA"
+# Détecter l'OS
+detect_os() {
+    if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+        echo "linux"
+    elif [[ "$OSTYPE" == "darwin"* ]]; then
+        echo "macos"
+    elif [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" || "$OSTYPE" == "win32" ]] || [[ -n "$MSYSTEM" ]]; then
+        echo "windows"
     else
-        # Utiliser le chemin UNC directement (sera testé plus tard)
-        PROJECT_PATH="//10.0.70.169/share/FOFANA/Etats Natacha/SCRIPT/EXTRACTION_PROSUMA"
+        echo "unknown"
     fi
-else
-    # macOS/Linux - utiliser le chemin tel quel
-    PROJECT_PATH="$NETWORK_SHARE"
+}
+
+# Détecter la distribution Linux et le gestionnaire de paquets
+detect_linux_distro() {
+    if [ -f /etc/redhat-release ]; then
+        # Red Hat, CentOS, Fedora
+        if command -v dnf &> /dev/null; then
+            echo "redhat-dnf"
+        elif command -v yum &> /dev/null; then
+            echo "redhat-yum"
+        else
+            echo "redhat"
+        fi
+    elif [ -f /etc/debian_version ]; then
+        # Debian, Ubuntu
+        echo "debian"
+    elif [ -f /etc/fedora-release ]; then
+        echo "fedora"
+    else
+        echo "unknown"
+    fi
+}
+
+# Installer les dépendances système nécessaires (Linux uniquement)
+install_system_dependencies() {
+    local distro="$1"
+    
+    echo "🔧 Vérification des dépendances système..."
+    
+    case "$distro" in
+        redhat-dnf)
+            echo "   📦 Distribution: Red Hat/CentOS/Fedora (dnf)"
+            if ! rpm -qa | grep -q cifs-utils; then
+                echo "   ⚙️  Installation de cifs-utils avec dnf..."
+                sudo dnf install -y cifs-utils 2>/dev/null || echo "   ⚠️  Installation manuelle requise: sudo dnf install cifs-utils"
+            else
+                echo "   ✅ cifs-utils déjà installé"
+            fi
+            ;;
+        redhat-yum)
+            echo "   📦 Distribution: Red Hat/CentOS (yum)"
+            if ! rpm -qa | grep -q cifs-utils; then
+                echo "   ⚙️  Installation de cifs-utils avec yum..."
+                sudo yum install -y cifs-utils 2>/dev/null || echo "   ⚠️  Installation manuelle requise: sudo yum install cifs-utils"
+            else
+                echo "   ✅ cifs-utils déjà installé"
+            fi
+            ;;
+        debian)
+            echo "   📦 Distribution: Debian/Ubuntu"
+            if ! dpkg -l | grep -q cifs-utils; then
+                echo "   ⚙️  Installation de cifs-utils avec apt-get..."
+                sudo apt-get update >/dev/null 2>&1
+                sudo apt-get install -y cifs-utils 2>/dev/null || echo "   ⚠️  Installation manuelle requise: sudo apt-get install cifs-utils"
+            else
+                echo "   ✅ cifs-utils déjà installé"
+            fi
+            ;;
+        fedora)
+            echo "   📦 Distribution: Fedora"
+            if ! rpm -qa | grep -q cifs-utils; then
+                echo "   ⚙️  Installation de cifs-utils avec dnf..."
+                sudo dnf install -y cifs-utils 2>/dev/null || echo "   ⚠️  Installation manuelle requise: sudo dnf install cifs-utils"
+            else
+                echo "   ✅ cifs-utils déjà installé"
+            fi
+            ;;
+        *)
+            echo "   ⚠️  Distribution inconnue"
+            ;;
+    esac
+}
+
+# Configuration automatique du chemin projet
+configure_project_path() {
+    local os_type="$1"
+    local distro="$2"
+    
+    if [ "$os_type" = "linux" ]; then
+        # ==================== LINUX - CONFIGURATION AUTOMATIQUE ====================
+        echo "🐧 Système détecté: Linux ($distro)"
+        echo
+        
+        # Installer les dépendances nécessaires
+        install_system_dependencies "$distro"
+        echo
+        
+        # Vérifier les chemins possibles
+        if [ -d "$HOME/API-EXTRACTION-PROSUMA-ASTEN" ] && [ -f "$HOME/API-EXTRACTION-PROSUMA-ASTEN/requirements.txt" ]; then
+            PROJECT_PATH="$HOME/API-EXTRACTION-PROSUMA-ASTEN"
+            echo "✅ Installation locale trouvée: $PROJECT_PATH"
+            return 0
+        elif [ -d "/mnt/share/FOFANA/Etats Natacha/SCRIPT/EXTRACTION_PROSUMA" ] && [ -f "/mnt/share/FOFANA/Etats Natacha/SCRIPT/EXTRACTION_PROSUMA/requirements.txt" ]; then
+            PROJECT_PATH="/mnt/share/FOFANA/Etats Natacha/SCRIPT/EXTRACTION_PROSUMA"
+            echo "✅ Montage réseau trouvé: $PROJECT_PATH"
+            return 0
+        elif [ -f "$(pwd)/requirements.txt" ] && [ -f "$(pwd)/API_COMMANDE_REASSORT/api_commande_reassort.py" ]; then
+            PROJECT_PATH="$(pwd)"
+            echo "✅ Exécution depuis le répertoire du projet: $PROJECT_PATH"
+            return 0
+        else
+            # Installation automatique si on a les fichiers source
+            if [ -f "$(pwd)/requirements.txt" ]; then
+                echo "✅ Code source détecté - Installation locale automatique..."
+                TARGET_PATH="$HOME/API-EXTRACTION-PROSUMA-ASTEN"
+                mkdir -p "$TARGET_PATH"
+                echo "📂 Copie vers $TARGET_PATH..."
+                cp -r "$(pwd)"/* "$TARGET_PATH/" 2>/dev/null || rsync -av --exclude='env*' "$(pwd)/" "$TARGET_PATH/" 2>/dev/null
+                PROJECT_PATH="$TARGET_PATH"
+                echo "✅ Installation terminée: $PROJECT_PATH"
+                return 0
+            else
+                PROJECT_PATH="$HOME/API-EXTRACTION-PROSUMA-ASTEN"
+                echo "⚠️  Aucune installation trouvée: $PROJECT_PATH"
+                return 1
+            fi
+        fi
+        
+    elif [ "$os_type" = "macos" ]; then
+        # ==================== macOS ====================
+        echo "🍎 Système détecté: macOS"
+        if [ -d "/Volumes/share/FOFANA/Etats Natacha/SCRIPT/EXTRACTION_PROSUMA" ]; then
+            PROJECT_PATH="/Volumes/share/FOFANA/Etats Natacha/SCRIPT/EXTRACTION_PROSUMA"
+        elif [ -d "$HOME/API-EXTRACTION-PROSUMA-ASTEN" ]; then
+            PROJECT_PATH="$HOME/API-EXTRACTION-PROSUMA-ASTEN"
+        elif [ -f "$(pwd)/requirements.txt" ]; then
+            PROJECT_PATH="$(pwd)"
+        else
+            PROJECT_PATH="$HOME/API-EXTRACTION-PROSUMA-ASTEN"
+        fi
+        echo "   → $PROJECT_PATH"
+        
+    elif [ "$os_type" = "windows" ]; then
+        # ==================== WINDOWS ====================
+        echo "🪟 Système détecté: Windows"
+        if [ -d "//10.0.70.169/share/FOFANA/Etats Natacha/SCRIPT/EXTRACTION_PROSUMA" ] 2>/dev/null; then
+            PROJECT_PATH="//10.0.70.169/share/FOFANA/Etats Natacha/SCRIPT/EXTRACTION_PROSUMA"
+        elif [ -d "\\\\10.0.70.169\\share\\FOFANA\\Etats Natacha\\SCRIPT\\EXTRACTION_PROSUMA" ] 2>/dev/null; then
+            PROJECT_PATH="\\\\10.0.70.169\\share\\FOFANA\\Etats Natacha\\SCRIPT\\EXTRACTION_PROSUMA"
+        elif [ -d "/c/Users/Public/EXTRACTION_PROSUMA" ] 2>/dev/null; then
+            PROJECT_PATH="/c/Users/Public/EXTRACTION_PROSUMA"
+        elif [ -f "$(pwd)/requirements.txt" ]; then
+            PROJECT_PATH="$(pwd)"
+        else
+            PROJECT_PATH="//10.0.70.169/share/FOFANA/Etats Natacha/SCRIPT/EXTRACTION_PROSUMA"
+        fi
+        echo "   → $PROJECT_PATH"
+    else
+        echo "❓ Système inconnu: $OSTYPE"
+        PROJECT_PATH="$(pwd)"
+    fi
+}
+
+# Exécuter la configuration
+DETECTED_OS=$(detect_os)
+LINUX_DISTRO=""
+
+if [ "$DETECTED_OS" = "linux" ]; then
+    LINUX_DISTRO=$(detect_linux_distro)
 fi
+
+configure_project_path "$DETECTED_OS" "$LINUX_DISTRO"
 
 # Environnement virtuel local (créé sur chaque PC)
 ENV_NAME="env_Api_Extraction_Alien"
