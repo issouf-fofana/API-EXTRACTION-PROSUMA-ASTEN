@@ -59,7 +59,7 @@ sudo dnf install -y cifs-utils
 chmod +x setup_linux_mount.sh
 ```
 
-#### Étape 3 : Monter le partage
+#### Étape 3 : Monter le partages
 
 ```bash
 ./setup_linux_mount.sh
