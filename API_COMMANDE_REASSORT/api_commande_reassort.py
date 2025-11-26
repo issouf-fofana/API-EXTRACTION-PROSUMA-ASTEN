@@ -690,7 +690,7 @@ class ProsumaAPICommandeReassortExtractor:
             logger.info("=" * 60)
             
             if len(all_orders) > 0:
-            logger.info(f"✅ {len(all_orders)} commandes réassort récupérées au total")
+                logger.info(f"✅ {len(all_orders)} commandes réassort récupérées au total")
             else:
                 logger.warning(f"⚠️ Aucune commande réassort récupérée")
             return all_orders
@@ -842,7 +842,7 @@ class ProsumaAPICommandeReassortExtractor:
                     # Chemin UNC, utiliser directement la concaténation avec backslash
                     network_filepath = f"{network_path}\\{filename}" if not network_path.endswith('\\') else f"{network_path}{filename}"
                 else:
-            network_filepath = os.path.join(network_path, filename)
+                    network_filepath = os.path.join(network_path, filename)
                 try:
                     # Vérifier que le dossier réseau existe
                     if not os.path.exists(network_path):
@@ -858,7 +858,7 @@ class ProsumaAPICommandeReassortExtractor:
                     # Copier le fichier
                     logger.info(f"📋 Tentative de copie vers: {network_filepath}")
                     try:
-            shutil.copy2(local_filepath, network_filepath)
+                        shutil.copy2(local_filepath, network_filepath)
                         logger.info(f"✅ Commande copy2 exécutée sans erreur")
                     except Exception as copy_ex:
                         logger.error(f"❌❌❌ ERREUR LORS DE LA COPIE ❌❌❌")
@@ -893,7 +893,7 @@ class ProsumaAPICommandeReassortExtractor:
                         logger.info(f"   ✅ Fichier vérifié et accessible")
                         logger.info(f"📁 Fichier local conservé dans EXPORT: {local_filepath}")
                         # IMPORTANT: Retourner le chemin réseau si la copie a réussi
-            return network_filepath
+                        return network_filepath
                     elif file_exists:
                         logger.warning(f"⚠️⚠️⚠️ FICHIER COPIÉ MAIS PROBLÈME DE VÉRIFICATION ⚠️⚠️⚠️")
                         logger.warning(f"   📁 Chemin réseau: {network_filepath}")
@@ -1048,29 +1048,29 @@ class ProsumaAPICommandeReassortExtractor:
                 asten_path = f"{base}/Etats Natacha/Commande/PRESENTATION_COMMANDE/ASTEN"
             else:
                 # Windows : Utiliser des backslashes \
-        base = self.network_folder_base.replace('/', '\\')
-        if base.endswith('\\'):
-            base = base[:-1]
-        asten_path = f"{base}\\Etats Natacha\\Commande\\PRESENTATION_COMMANDE\\ASTEN"
-        
-        # Créer le dossier ASTEN s'il n'existe pas
-        if create_network_folder(asten_path):
+                base = self.network_folder_base.replace('/', '\\')
+                if base.endswith('\\'):
+                    base = base[:-1]
+                asten_path = f"{base}\\Etats Natacha\\Commande\\PRESENTATION_COMMANDE\\ASTEN"
+            
+            # Créer le dossier ASTEN s'il n'existe pas
+            if create_network_folder(asten_path):
                 if os.path.exists(asten_path):
                     logger.info(f"✅ Dossier ASTEN accessible: {asten_path}")
                 else:
                     logger.warning(f"⚠️ Dossier ASTEN créé mais non accessible: {asten_path}")
-        else:
-            logger.warning(f"⚠️ Impossible de créer le dossier ASTEN: {asten_path}")
-        
-        # Créer les dossiers pour chaque magasin
-        created_folders = []
-        for shop_code in self.shop_codes:
-            folder_name = self.get_shop_folder_name(shop_code)
-            if folder_name:
-                shop_folder_path = os.path.join(asten_path, folder_name)
-                if create_network_folder(shop_folder_path):
+            else:
+                logger.warning(f"⚠️ Impossible de créer le dossier ASTEN: {asten_path}")
+            
+            # Créer les dossiers pour chaque magasin
+            created_folders = []
+            for shop_code in self.shop_codes:
+                folder_name = self.get_shop_folder_name(shop_code)
+                if folder_name:
+                    shop_folder_path = os.path.join(asten_path, folder_name)
+                    if create_network_folder(shop_folder_path):
                         if os.path.exists(shop_folder_path):
-                    created_folders.append(folder_name)
+                            created_folders.append(folder_name)
                             logger.debug(f"✅ Dossier accessible: {folder_name}")
             
             logger.info(f"✅ {len(created_folders)} dossiers réseau accessibles sur {len(self.shop_codes)} magasins")
