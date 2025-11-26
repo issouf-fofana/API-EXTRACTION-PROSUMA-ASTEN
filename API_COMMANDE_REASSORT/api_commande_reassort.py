@@ -134,7 +134,7 @@ class ProsumaAPICommandeReassortExtractor:
             try:
                 # Vérifier que le dossier existe et est accessible
                 if os.path.exists(log_network_path) and os.access(log_network_path, os.W_OK):
-                    log_file = os.path.join(log_network_path, f'api_commande_reassort_{datetime.now().strftime("%Y%m%d")}.log')
+            log_file = os.path.join(log_network_path, f'api_commande_reassort_{datetime.now().strftime("%Y%m%d")}.log')
                     # Tester l'écriture
                     try:
                         test_file = os.path.join(log_network_path, '.test_write')
@@ -144,7 +144,7 @@ class ProsumaAPICommandeReassortExtractor:
                     except (PermissionError, OSError):
                         # Pas d'accès en écriture, utiliser le fallback local
                         log_file = None
-                else:
+        else:
                     log_file = None
             except Exception as e:
                 # Erreur d'accès au réseau, utiliser le fallback local
@@ -160,18 +160,18 @@ class ProsumaAPICommandeReassortExtractor:
                 log_file = os.path.join(local_log_dir, f'api_commande_reassort_{datetime.now().strftime("%Y%m%d")}.log')
             except Exception as e:
                 # Dernier recours : utiliser le dossier de base
-                log_file = os.path.join(self.base_dir, f'api_commande_reassort_{datetime.now().strftime("%Y%m%d")}.log')
+            log_file = os.path.join(self.base_dir, f'api_commande_reassort_{datetime.now().strftime("%Y%m%d")}.log')
         
         # Configuration du logging avec gestion d'erreur
         try:
-            logging.basicConfig(
-                level=logging.INFO,
-                format='%(asctime)s - %(levelname)s - %(message)s',
-                handlers=[
-                    logging.FileHandler(log_file, encoding='utf-8'),
-                    SafeStreamHandler()
-                ]
-            )
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(levelname)s - %(message)s',
+            handlers=[
+                logging.FileHandler(log_file, encoding='utf-8'),
+                SafeStreamHandler()
+            ]
+        )
             
             # Définir les permissions pour permettre à tous les utilisateurs d'écrire
             from utils import set_log_file_permissions
@@ -276,7 +276,7 @@ class ProsumaAPICommandeReassortExtractor:
                 if base.endswith('/'):
                     base = base[:-1]
                 asten_path = f"{base}/Etats Natacha/Commande/PRESENTATION_COMMANDE/ASTEN"
-                network_path = os.path.join(asten_path, folder_name)
+            network_path = os.path.join(asten_path, folder_name)
             else:
                 # Windows : Utiliser des backslashes \
                 # Chemin: \\10.0.70.169\share\FOFANA\Etats Natacha\Commande\PRESENTATION_COMMANDE\ASTEN\{MAGASIN}
@@ -289,11 +289,11 @@ class ProsumaAPICommandeReassortExtractor:
             logger.debug(f"Chemin réseau calculé pour {shop_code} ({self.os_type}): {network_path}")
             
             # Créer le dossier s'il n'existe pas
-            if create_network_folder(network_path):
+        if create_network_folder(network_path):
                 # Vérifier que le dossier existe vraiment
                 if os.path.exists(network_path):
                     logger.info(f"✅ Dossier réseau vérifié: {network_path}")
-                    return network_path
+            return network_path
                 else:
                     logger.warning(f"⚠️ Le dossier réseau n'existe pas après création: {network_path}")
                     if self.os_type in ['linux', 'macos']:
@@ -306,7 +306,7 @@ class ProsumaAPICommandeReassortExtractor:
                 return None
         except Exception as e:
             logger.error(f"❌ Erreur lors de la création du chemin réseau pour {shop_code}: {e}")
-            return None
+        return None
         
     def get_log_network_path(self):
         """Retourne le chemin réseau pour les logs"""
@@ -323,14 +323,14 @@ class ProsumaAPICommandeReassortExtractor:
             log_path = f"{base}/Etats Natacha/SCRIPT/LOG"
         else:
             # Windows : Utiliser des backslashes \
-            base = self.network_folder_base.replace('/', '\\')
-            if base.endswith('\\'):
-                base = base[:-1]
-            log_path = f"{base}\\Etats Natacha\\SCRIPT\\LOG"
+        base = self.network_folder_base.replace('/', '\\')
+        if base.endswith('\\'):
+            base = base[:-1]
+        log_path = f"{base}\\Etats Natacha\\SCRIPT\\LOG"
         
         if create_network_folder(log_path):
             if os.path.exists(log_path):
-                return log_path
+            return log_path
         return None
 
     def test_api_connection(self, base_url):
@@ -690,7 +690,7 @@ class ProsumaAPICommandeReassortExtractor:
             logger.info("=" * 60)
             
             if len(all_orders) > 0:
-                logger.info(f"✅ {len(all_orders)} commandes réassort récupérées au total")
+            logger.info(f"✅ {len(all_orders)} commandes réassort récupérées au total")
             else:
                 logger.warning(f"⚠️ Aucune commande réassort récupérée")
             return all_orders
@@ -842,7 +842,7 @@ class ProsumaAPICommandeReassortExtractor:
                     # Chemin UNC, utiliser directement la concaténation avec backslash
                     network_filepath = f"{network_path}\\{filename}" if not network_path.endswith('\\') else f"{network_path}{filename}"
                 else:
-                    network_filepath = os.path.join(network_path, filename)
+            network_filepath = os.path.join(network_path, filename)
                 try:
                     # Vérifier que le dossier réseau existe
                     if not os.path.exists(network_path):
@@ -858,7 +858,7 @@ class ProsumaAPICommandeReassortExtractor:
                     # Copier le fichier
                     logger.info(f"📋 Tentative de copie vers: {network_filepath}")
                     try:
-                        shutil.copy2(local_filepath, network_filepath)
+            shutil.copy2(local_filepath, network_filepath)
                         logger.info(f"✅ Commande copy2 exécutée sans erreur")
                     except Exception as copy_ex:
                         logger.error(f"❌❌❌ ERREUR LORS DE LA COPIE ❌❌❌")
@@ -893,7 +893,7 @@ class ProsumaAPICommandeReassortExtractor:
                         logger.info(f"   ✅ Fichier vérifié et accessible")
                         logger.info(f"📁 Fichier local conservé dans EXPORT: {local_filepath}")
                         # IMPORTANT: Retourner le chemin réseau si la copie a réussi
-                        return network_filepath
+            return network_filepath
                     elif file_exists:
                         logger.warning(f"⚠️⚠️⚠️ FICHIER COPIÉ MAIS PROBLÈME DE VÉRIFICATION ⚠️⚠️⚠️")
                         logger.warning(f"   📁 Chemin réseau: {network_filepath}")
@@ -1048,29 +1048,29 @@ class ProsumaAPICommandeReassortExtractor:
                 asten_path = f"{base}/Etats Natacha/Commande/PRESENTATION_COMMANDE/ASTEN"
             else:
                 # Windows : Utiliser des backslashes \
-                base = self.network_folder_base.replace('/', '\\')
-                if base.endswith('\\'):
-                    base = base[:-1]
-                asten_path = f"{base}\\Etats Natacha\\Commande\\PRESENTATION_COMMANDE\\ASTEN"
-            
-            # Créer le dossier ASTEN s'il n'existe pas
-            if create_network_folder(asten_path):
+        base = self.network_folder_base.replace('/', '\\')
+        if base.endswith('\\'):
+            base = base[:-1]
+        asten_path = f"{base}\\Etats Natacha\\Commande\\PRESENTATION_COMMANDE\\ASTEN"
+        
+        # Créer le dossier ASTEN s'il n'existe pas
+        if create_network_folder(asten_path):
                 if os.path.exists(asten_path):
                     logger.info(f"✅ Dossier ASTEN accessible: {asten_path}")
                 else:
                     logger.warning(f"⚠️ Dossier ASTEN créé mais non accessible: {asten_path}")
-            else:
-                logger.warning(f"⚠️ Impossible de créer le dossier ASTEN: {asten_path}")
-            
-            # Créer les dossiers pour chaque magasin
-            created_folders = []
-            for shop_code in self.shop_codes:
-                folder_name = self.get_shop_folder_name(shop_code)
-                if folder_name:
-                    shop_folder_path = os.path.join(asten_path, folder_name)
-                    if create_network_folder(shop_folder_path):
+        else:
+            logger.warning(f"⚠️ Impossible de créer le dossier ASTEN: {asten_path}")
+        
+        # Créer les dossiers pour chaque magasin
+        created_folders = []
+        for shop_code in self.shop_codes:
+            folder_name = self.get_shop_folder_name(shop_code)
+            if folder_name:
+                shop_folder_path = os.path.join(asten_path, folder_name)
+                if create_network_folder(shop_folder_path):
                         if os.path.exists(shop_folder_path):
-                            created_folders.append(folder_name)
+                    created_folders.append(folder_name)
                             logger.debug(f"✅ Dossier accessible: {folder_name}")
             
             logger.info(f"✅ {len(created_folders)} dossiers réseau accessibles sur {len(self.shop_codes)} magasins")

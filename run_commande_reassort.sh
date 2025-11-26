@@ -225,17 +225,17 @@ configure_project_path() {
     elif [ "$os_type" = "windows" ]; then
         # ==================== WINDOWS ====================
         echo "🪟 Système détecté: Windows"
-        if [ -d "//10.0.70.169/share/FOFANA/Etats Natacha/SCRIPT/EXTRACTION_PROSUMA" ] 2>/dev/null; then
-            PROJECT_PATH="//10.0.70.169/share/FOFANA/Etats Natacha/SCRIPT/EXTRACTION_PROSUMA"
-        elif [ -d "\\\\10.0.70.169\\share\\FOFANA\\Etats Natacha\\SCRIPT\\EXTRACTION_PROSUMA" ] 2>/dev/null; then
-            PROJECT_PATH="\\\\10.0.70.169\\share\\FOFANA\\Etats Natacha\\SCRIPT\\EXTRACTION_PROSUMA"
-        elif [ -d "/c/Users/Public/EXTRACTION_PROSUMA" ] 2>/dev/null; then
-            PROJECT_PATH="/c/Users/Public/EXTRACTION_PROSUMA"
+    if [ -d "//10.0.70.169/share/FOFANA/Etats Natacha/SCRIPT/EXTRACTION_PROSUMA" ] 2>/dev/null; then
+        PROJECT_PATH="//10.0.70.169/share/FOFANA/Etats Natacha/SCRIPT/EXTRACTION_PROSUMA"
+    elif [ -d "\\\\10.0.70.169\\share\\FOFANA\\Etats Natacha\\SCRIPT\\EXTRACTION_PROSUMA" ] 2>/dev/null; then
+        PROJECT_PATH="\\\\10.0.70.169\\share\\FOFANA\\Etats Natacha\\SCRIPT\\EXTRACTION_PROSUMA"
+    elif [ -d "/c/Users/Public/EXTRACTION_PROSUMA" ] 2>/dev/null; then
+        PROJECT_PATH="/c/Users/Public/EXTRACTION_PROSUMA"
         elif [ -f "$(pwd)/requirements.txt" ]; then
             PROJECT_PATH="$(pwd)"
         else
-            PROJECT_PATH="//10.0.70.169/share/FOFANA/Etats Natacha/SCRIPT/EXTRACTION_PROSUMA"
-        fi
+        PROJECT_PATH="//10.0.70.169/share/FOFANA/Etats Natacha/SCRIPT/EXTRACTION_PROSUMA"
+    fi
         echo "   → $PROJECT_PATH"
     else
         echo "❓ Système inconnu: $OSTYPE"

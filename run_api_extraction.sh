@@ -284,23 +284,23 @@ configure_project_path() {
         # ==================== WINDOWS ====================
         echo "🪟 Système détecté: Windows"
         
-        if [ -d "//10.0.70.169/share/FOFANA/Etats Natacha/SCRIPT/EXTRACTION_PROSUMA" ] 2>/dev/null; then
-            PROJECT_PATH="//10.0.70.169/share/FOFANA/Etats Natacha/SCRIPT/EXTRACTION_PROSUMA"
+    if [ -d "//10.0.70.169/share/FOFANA/Etats Natacha/SCRIPT/EXTRACTION_PROSUMA" ] 2>/dev/null; then
+        PROJECT_PATH="//10.0.70.169/share/FOFANA/Etats Natacha/SCRIPT/EXTRACTION_PROSUMA"
             echo "   → Réseau UNC: $PROJECT_PATH"
-        elif [ -d "\\\\10.0.70.169\\share\\FOFANA\\Etats Natacha\\SCRIPT\\EXTRACTION_PROSUMA" ] 2>/dev/null; then
-            PROJECT_PATH="\\\\10.0.70.169\\share\\FOFANA\\Etats Natacha\\SCRIPT\\EXTRACTION_PROSUMA"
+    elif [ -d "\\\\10.0.70.169\\share\\FOFANA\\Etats Natacha\\SCRIPT\\EXTRACTION_PROSUMA" ] 2>/dev/null; then
+        PROJECT_PATH="\\\\10.0.70.169\\share\\FOFANA\\Etats Natacha\\SCRIPT\\EXTRACTION_PROSUMA"
             echo "   → Réseau UNC (backslash): $PROJECT_PATH"
-        elif [ -d "/c/Users/Public/EXTRACTION_PROSUMA" ] 2>/dev/null; then
-            PROJECT_PATH="/c/Users/Public/EXTRACTION_PROSUMA"
+    elif [ -d "/c/Users/Public/EXTRACTION_PROSUMA" ] 2>/dev/null; then
+        PROJECT_PATH="/c/Users/Public/EXTRACTION_PROSUMA"
             echo "   → Local: $PROJECT_PATH"
         elif [ -f "$(pwd)/requirements.txt" ]; then
             PROJECT_PATH="$(pwd)"
             echo "   → Répertoire courant: $PROJECT_PATH"
-        else
-            PROJECT_PATH="//10.0.70.169/share/FOFANA/Etats Natacha/SCRIPT/EXTRACTION_PROSUMA"
-            echo "   → Réseau par défaut: $PROJECT_PATH"
-        fi
     else
+        PROJECT_PATH="//10.0.70.169/share/FOFANA/Etats Natacha/SCRIPT/EXTRACTION_PROSUMA"
+            echo "   → Réseau par défaut: $PROJECT_PATH"
+    fi
+else
         # ==================== AUTRE OS ====================
         echo "❓ Système inconnu: $OSTYPE"
         PROJECT_PATH="$(pwd)"
