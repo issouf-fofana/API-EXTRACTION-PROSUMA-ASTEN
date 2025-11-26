@@ -289,11 +289,11 @@ class ProsumaAPICommandeReassortExtractor:
             logger.debug(f"Chemin réseau calculé pour {shop_code} ({self.os_type}): {network_path}")
             
             # Créer le dossier s'il n'existe pas
-        if create_network_folder(network_path):
+            if create_network_folder(network_path):
                 # Vérifier que le dossier existe vraiment
                 if os.path.exists(network_path):
                     logger.info(f"✅ Dossier réseau vérifié: {network_path}")
-            return network_path
+                    return network_path
                 else:
                     logger.warning(f"⚠️ Le dossier réseau n'existe pas après création: {network_path}")
                     if self.os_type in ['linux', 'macos']:
@@ -306,7 +306,7 @@ class ProsumaAPICommandeReassortExtractor:
                 return None
         except Exception as e:
             logger.error(f"❌ Erreur lors de la création du chemin réseau pour {shop_code}: {e}")
-        return None
+            return None
         
     def get_log_network_path(self):
         """Retourne le chemin réseau pour les logs"""
@@ -323,14 +323,14 @@ class ProsumaAPICommandeReassortExtractor:
             log_path = f"{base}/Etats Natacha/SCRIPT/LOG"
         else:
             # Windows : Utiliser des backslashes \
-        base = self.network_folder_base.replace('/', '\\')
-        if base.endswith('\\'):
-            base = base[:-1]
-        log_path = f"{base}\\Etats Natacha\\SCRIPT\\LOG"
+            base = self.network_folder_base.replace('/', '\\')
+            if base.endswith('\\'):
+                base = base[:-1]
+            log_path = f"{base}\\Etats Natacha\\SCRIPT\\LOG"
         
         if create_network_folder(log_path):
             if os.path.exists(log_path):
-            return log_path
+                return log_path
         return None
 
     def test_api_connection(self, base_url):
