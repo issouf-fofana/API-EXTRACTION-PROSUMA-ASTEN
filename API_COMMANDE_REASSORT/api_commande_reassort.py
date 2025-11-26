@@ -213,11 +213,11 @@ class ProsumaAPICommandeReassortExtractor:
             logger.debug(f"Chemin réseau calculé pour {shop_code}: {network_path}")
             
             # Créer le dossier s'il n'existe pas
-        if create_network_folder(network_path):
+            if create_network_folder(network_path):
                 # Vérifier que le dossier existe vraiment
                 if os.path.exists(network_path):
                     logger.debug(f"✅ Dossier réseau vérifié: {network_path}")
-            return network_path
+                    return network_path
                 else:
                     logger.warning(f"⚠️ Le dossier réseau n'existe pas après création: {network_path}")
                     return None
@@ -226,7 +226,7 @@ class ProsumaAPICommandeReassortExtractor:
                 return None
         except Exception as e:
             logger.error(f"❌ Erreur lors de la création du chemin réseau pour {shop_code}: {e}")
-        return None
+            return None
         
     def get_log_network_path(self):
         """Retourne le chemin réseau pour les logs"""
