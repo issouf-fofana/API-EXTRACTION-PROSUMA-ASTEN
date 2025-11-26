@@ -37,6 +37,26 @@ def get_os_type():
     else:
         return 'unknown'
 
+def check_network_mount(path):
+    """Vérifie si un chemin réseau est monté (Linux/macOS uniquement)"""
+    os_type = get_os_type()
+    if os_type not in ['linux', 'macos']:
+        return True  # Sur Windows, pas besoin de vérifier le montage
+    
+    # Vérifier si le chemin existe et est accessible
+    if not os.path.exists(path):
+        return False
+    
+    # Vérifier si c'est un point de montage
+    try:
+        # Sur Linux, vérifier si c'est dans /proc/mounts
+        with open('/proc/mounts', 'r') as f:
+            mounts = f.read()
+            return path in mounts or any(path.startswith(mount.split()[1]) for mount in mounts.split('\n') if mount)
+    except:
+        # Si on ne peut pas lire /proc/mounts, vérifier juste l'existence
+        return os.path.exists(path) and os.path.isdir(path)
+
 class ProsumaAPICommandeReassortExtractor:
     def __init__(self):
         """Initialise l'extracteur avec la configuration"""
@@ -60,9 +80,25 @@ class ProsumaAPICommandeReassortExtractor:
         if self.os_type == 'linux':
             # Sur Linux, utiliser un chemin monté ou configurable
             self.network_folder_base = os.getenv('DOWNLOAD_FOLDER_BASE', '/mnt/share/FOFANA')
+            # Vérifier si le partage est monté
+            if not check_network_mount('/mnt/share'):
+                print("\n" + "="*80)
+                print("⚠️  AVERTISSEMENT : PARTAGE RÉSEAU NON MONTÉ")
+                print("="*80)
+                print(f"Le partage SMB n'est PAS monté sur /mnt/share")
+                print(f"Les fichiers CSV seront enregistrés UNIQUEMENT EN LOCAL dans:")
+                print(f"  → {self.base_dir}/EXPORT/")
+                print()
+                print("Pour envoyer vers le réseau, montez d'abord le partage :")
+                print("  sudo mount -t cifs //10.0.70.169/share /mnt/share -o username=VOTRE_USER")
+                print("="*80 + "\n")
+                self.network_folder_base = None  # Désactiver le réseau
         elif self.os_type == 'macos':
             # Sur macOS, utiliser /Volumes
             self.network_folder_base = os.getenv('DOWNLOAD_FOLDER_BASE', '/Volumes/share/FOFANA')
+            if not check_network_mount('/Volumes/share'):
+                print("\n⚠️  AVERTISSEMENT : Partage réseau non monté sur /Volumes/share\n")
+                self.network_folder_base = None
         else:
             # Sur Windows, utiliser le chemin UNC
             self.network_folder_base = os.getenv('DOWNLOAD_FOLDER_BASE', '\\\\10.0.70.169\\share\\FOFANA')
@@ -221,6 +257,10 @@ class ProsumaAPICommandeReassortExtractor:
 
     def get_network_path_for_shop(self, shop_code):
         """Retourne le chemin réseau pour un magasin spécifique dans ASTEN"""
+        # Si le partage réseau n'est pas configuré ou pas monté, retourner None
+        if not self.network_folder_base:
+            return None
+        
         try:
             # Obtenir le nom du dossier pour ce magasin
             folder_name = self.get_shop_folder_name(shop_code)
@@ -256,11 +296,13 @@ class ProsumaAPICommandeReassortExtractor:
                     return network_path
                 else:
                     logger.warning(f"⚠️ Le dossier réseau n'existe pas après création: {network_path}")
-                    logger.warning(f"   Sur Linux, assurez-vous que le partage est monté sur: {self.network_folder_base}")
+                    if self.os_type in ['linux', 'macos']:
+                        logger.warning(f"   Sur Linux, le partage SMB doit être monté sur: /mnt/share")
                     return None
             else:
                 logger.warning(f"⚠️ Impossible de créer le dossier réseau: {network_path}")
-                logger.warning(f"   Sur Linux, vérifiez que le partage est monté: {self.network_folder_base}")
+                if self.os_type in ['linux', 'macos']:
+                    logger.warning(f"   Sur Linux, vérifiez que le partage SMB est monté: sudo mount | grep /mnt/share")
                 return None
         except Exception as e:
             logger.error(f"❌ Erreur lors de la création du chemin réseau pour {shop_code}: {e}")
@@ -268,6 +310,7 @@ class ProsumaAPICommandeReassortExtractor:
         
     def get_log_network_path(self):
         """Retourne le chemin réseau pour les logs"""
+        # Si le partage réseau n'est pas configuré ou pas monté, retourner None
         if not self.network_folder_base:
             return None
         
@@ -286,7 +329,8 @@ class ProsumaAPICommandeReassortExtractor:
             log_path = f"{base}\\Etats Natacha\\SCRIPT\\LOG"
         
         if create_network_folder(log_path):
-            return log_path
+            if os.path.exists(log_path):
+                return log_path
         return None
 
     def test_api_connection(self, base_url):
@@ -988,46 +1032,55 @@ class ProsumaAPICommandeReassortExtractor:
         
         # Créer tous les dossiers réseau pour chaque magasin au début
         logger.info("=" * 60)
-        logger.info("CRÉATION DES DOSSIERS RÉSEAU")
+        logger.info("CONFIGURATION RÉSEAU")
         logger.info("=" * 60)
         logger.info(f"OS détecté: {self.os_type}")
-        logger.info(f"Chemin de base: {self.network_folder_base}")
         
-        # Construire le chemin ASTEN selon l'OS
-        if self.os_type in ['linux', 'macos']:
-            # Linux/macOS : Utiliser des slashes /
-            base = self.network_folder_base
-            if base.endswith('/'):
-                base = base[:-1]
-            asten_path = f"{base}/Etats Natacha/Commande/PRESENTATION_COMMANDE/ASTEN"
-        else:
-            # Windows : Utiliser des backslashes \
-            base = self.network_folder_base.replace('/', '\\')
-            if base.endswith('\\'):
-                base = base[:-1]
-            asten_path = f"{base}\\Etats Natacha\\Commande\\PRESENTATION_COMMANDE\\ASTEN"
-        
-        # Créer le dossier ASTEN s'il n'existe pas
-        if create_network_folder(asten_path):
-            logger.info(f"✅ Dossier ASTEN créé/vérifié: {asten_path}")
-        else:
-            logger.warning(f"⚠️ Impossible de créer le dossier ASTEN: {asten_path}")
+        if self.network_folder_base:
+            logger.info(f"Chemin réseau: {self.network_folder_base}")
+            
+            # Construire le chemin ASTEN selon l'OS
             if self.os_type in ['linux', 'macos']:
-                logger.warning(f"   Sur Linux, assurez-vous que le partage SMB est monté sur: {self.network_folder_base}")
-        
-        # Créer les dossiers pour chaque magasin
-        created_folders = []
-        for shop_code in self.shop_codes:
-            folder_name = self.get_shop_folder_name(shop_code)
-            if folder_name:
-                shop_folder_path = os.path.join(asten_path, folder_name)
-                if create_network_folder(shop_folder_path):
-                    created_folders.append(folder_name)
-                    logger.info(f"✅ Dossier créé/vérifié: {folder_name}")
+                # Linux/macOS : Utiliser des slashes /
+                base = self.network_folder_base
+                if base.endswith('/'):
+                    base = base[:-1]
+                asten_path = f"{base}/Etats Natacha/Commande/PRESENTATION_COMMANDE/ASTEN"
+            else:
+                # Windows : Utiliser des backslashes \
+                base = self.network_folder_base.replace('/', '\\')
+                if base.endswith('\\'):
+                    base = base[:-1]
+                asten_path = f"{base}\\Etats Natacha\\Commande\\PRESENTATION_COMMANDE\\ASTEN"
+            
+            # Créer le dossier ASTEN s'il n'existe pas
+            if create_network_folder(asten_path):
+                if os.path.exists(asten_path):
+                    logger.info(f"✅ Dossier ASTEN accessible: {asten_path}")
                 else:
-                    logger.warning(f"⚠️ Impossible de créer le dossier: {folder_name}")
+                    logger.warning(f"⚠️ Dossier ASTEN créé mais non accessible: {asten_path}")
+            else:
+                logger.warning(f"⚠️ Impossible de créer le dossier ASTEN: {asten_path}")
+            
+            # Créer les dossiers pour chaque magasin
+            created_folders = []
+            for shop_code in self.shop_codes:
+                folder_name = self.get_shop_folder_name(shop_code)
+                if folder_name:
+                    shop_folder_path = os.path.join(asten_path, folder_name)
+                    if create_network_folder(shop_folder_path):
+                        if os.path.exists(shop_folder_path):
+                            created_folders.append(folder_name)
+                            logger.debug(f"✅ Dossier accessible: {folder_name}")
+            
+            logger.info(f"✅ {len(created_folders)} dossiers réseau accessibles sur {len(self.shop_codes)} magasins")
+        else:
+            logger.warning("⚠️ PARTAGE RÉSEAU NON DISPONIBLE")
+            logger.warning("   Les fichiers seront enregistrés UNIQUEMENT EN LOCAL")
+            if self.os_type in ['linux', 'macos']:
+                logger.warning("   Pour activer le réseau, montez d'abord le partage SMB:")
+                logger.warning("   sudo mount -t cifs //10.0.70.169/share /mnt/share -o username=VOTRE_USER")
         
-        logger.info(f"✅ {len(created_folders)} dossiers créés/vérifiés sur {len(self.shop_codes)} magasins")
         logger.info("=" * 60)
         
         successful_shops = 0
