@@ -134,7 +134,7 @@ class ProsumaAPICommandeReassortExtractor:
             try:
                 # Vérifier que le dossier existe et est accessible
                 if os.path.exists(log_network_path) and os.access(log_network_path, os.W_OK):
-            log_file = os.path.join(log_network_path, f'api_commande_reassort_{datetime.now().strftime("%Y%m%d")}.log')
+                    log_file = os.path.join(log_network_path, f'api_commande_reassort_{datetime.now().strftime("%Y%m%d")}.log')
                     # Tester l'écriture
                     try:
                         test_file = os.path.join(log_network_path, '.test_write')
@@ -144,7 +144,7 @@ class ProsumaAPICommandeReassortExtractor:
                     except (PermissionError, OSError):
                         # Pas d'accès en écriture, utiliser le fallback local
                         log_file = None
-        else:
+                else:
                     log_file = None
             except Exception as e:
                 # Erreur d'accès au réseau, utiliser le fallback local
@@ -160,18 +160,18 @@ class ProsumaAPICommandeReassortExtractor:
                 log_file = os.path.join(local_log_dir, f'api_commande_reassort_{datetime.now().strftime("%Y%m%d")}.log')
             except Exception as e:
                 # Dernier recours : utiliser le dossier de base
-            log_file = os.path.join(self.base_dir, f'api_commande_reassort_{datetime.now().strftime("%Y%m%d")}.log')
+                log_file = os.path.join(self.base_dir, f'api_commande_reassort_{datetime.now().strftime("%Y%m%d")}.log')
         
         # Configuration du logging avec gestion d'erreur
         try:
-        logging.basicConfig(
-            level=logging.INFO,
-            format='%(asctime)s - %(levelname)s - %(message)s',
-            handlers=[
-                logging.FileHandler(log_file, encoding='utf-8'),
-                SafeStreamHandler()
-            ]
-        )
+            logging.basicConfig(
+                level=logging.INFO,
+                format='%(asctime)s - %(levelname)s - %(message)s',
+                handlers=[
+                    logging.FileHandler(log_file, encoding='utf-8'),
+                    SafeStreamHandler()
+                ]
+            )
             
             # Définir les permissions pour permettre à tous les utilisateurs d'écrire
             from utils import set_log_file_permissions
@@ -276,7 +276,7 @@ class ProsumaAPICommandeReassortExtractor:
                 if base.endswith('/'):
                     base = base[:-1]
                 asten_path = f"{base}/Etats Natacha/Commande/PRESENTATION_COMMANDE/ASTEN"
-            network_path = os.path.join(asten_path, folder_name)
+                network_path = os.path.join(asten_path, folder_name)
             else:
                 # Windows : Utiliser des backslashes \
                 # Chemin: \\10.0.70.169\share\FOFANA\Etats Natacha\Commande\PRESENTATION_COMMANDE\ASTEN\{MAGASIN}
