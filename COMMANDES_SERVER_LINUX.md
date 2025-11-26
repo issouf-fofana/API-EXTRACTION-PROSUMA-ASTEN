@@ -32,7 +32,7 @@ smbclient -L 10.0.70.169 -N
 
 ---
 
-## 🔧 ÉTAPE 3 : MONTER LE PARTAGE SMB
+## 🔧 ÉTAPE 3 : MONTER LE PARTAGE SMB 1
 
 ### Option A : Montage temporaire (pour tester)
 
