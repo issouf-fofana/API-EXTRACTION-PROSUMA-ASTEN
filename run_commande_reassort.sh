@@ -243,6 +243,62 @@ configure_project_path() {
     fi
 }
 
+# Fonction pour monter le partage SMB sur Linux avec les bonnes permissions
+mount_smb_share_linux() {
+    if [ "$DETECTED_OS" != "linux" ]; then
+        return 0  # Pas sur Linux, on ne fait rien
+    fi
+    
+    local MOUNT_POINT="/mnt/share"
+    local SMB_SERVER="//10.0.70.169/SHARE"
+    local SMB_USER="ifofana"
+    local SMB_PASSWORD="        @Al"  # Mot de passe avec espaces
+    local SMB_DOMAIN="PROSUMA"
+    
+    # Vérifier si déjà monté avec les bonnes permissions
+    if mountpoint -q "$MOUNT_POINT" 2>/dev/null; then
+        # Vérifier les permissions en testant l'écriture
+        if touch "$MOUNT_POINT/FOFANA/.test_write" 2>/dev/null; then
+            rm -f "$MOUNT_POINT/FOFANA/.test_write" 2>/dev/null
+            echo "✅ Partage SMB déjà monté avec les bonnes permissions"
+            return 0
+        else
+            # Démonter car permissions incorrectes
+            echo "⚠️  Partage monté mais permissions incorrectes, remontage..."
+            sudo umount "$MOUNT_POINT" 2>/dev/null || sudo umount -l "$MOUNT_POINT" 2>/dev/null
+            sleep 1
+        fi
+    fi
+    
+    # Créer le point de montage si nécessaire
+    if [ ! -d "$MOUNT_POINT" ]; then
+        echo "📁 Création du point de montage: $MOUNT_POINT"
+        sudo mkdir -p "$MOUNT_POINT" 2>/dev/null
+    fi
+    
+    # Monter le partage avec les bonnes permissions
+    echo "🔌 Montage du partage SMB: $SMB_SERVER"
+    sudo mount -t cifs "$SMB_SERVER" "$MOUNT_POINT" \
+        -o username="$SMB_USER",password="$SMB_PASSWORD",domain="$SMB_DOMAIN",uid=$(id -u),gid=$(id -g),file_mode=0777,dir_mode=0777,vers=3.0 \
+        2>/dev/null
+    
+    if [ $? -eq 0 ]; then
+        # Vérifier que le montage fonctionne avec l'écriture
+        if touch "$MOUNT_POINT/FOFANA/.test_write" 2>/dev/null; then
+            rm -f "$MOUNT_POINT/FOFANA/.test_write" 2>/dev/null
+            echo "✅ Partage SMB monté avec succès: $MOUNT_POINT"
+            return 0
+        else
+            echo "⚠️  Partage monté mais impossible d'écrire"
+            return 1
+        fi
+    else
+        echo "❌ Échec du montage SMB"
+        echo "💡 Vérifiez les credentials et la connectivité réseau"
+        return 1
+    fi
+}
+
 # Exécuter la configuration
 DETECTED_OS=$(detect_os)
 LINUX_DISTRO=""
@@ -252,6 +308,22 @@ if [ "$DETECTED_OS" = "linux" ]; then
 fi
 
 configure_project_path "$DETECTED_OS" "$LINUX_DISTRO"
+
+# Monter le partage SMB sur Linux si nécessaire
+if [ "$DETECTED_OS" = "linux" ]; then
+    echo
+    echo "🔗 Configuration du partage réseau SMB..."
+    mount_smb_share_linux
+    if [ $? -ne 0 ]; then
+        echo
+        echo "⚠️  ATTENTION: Le partage SMB n'a pas pu être monté correctement"
+        echo "   Les fichiers seront peut-être créés localement sur le serveur"
+        echo "   Montez manuellement le partage avec:"
+        echo "   sudo mount -t cifs //10.0.70.169/SHARE /mnt/share -o username=ifofana,password='        @Al',domain=PROSUMA,uid=\$(id -u),gid=\$(id -g),file_mode=0777,dir_mode=0777,vers=3.0"
+        echo
+    fi
+    echo
+fi
 
 # Environnement virtuel local (créé sur chaque PC)
 ENV_NAME="env_Api_Extraction_Alien"
