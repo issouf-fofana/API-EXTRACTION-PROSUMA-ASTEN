@@ -78,24 +78,23 @@ class ProsumaAPICommandeReassortExtractor:
         
         # Configurer le chemin réseau selon l'OS
         if self.os_type == 'linux':
-            # Sur Linux, utiliser un chemin monté ou configurable
-            self.network_folder_base = os.getenv('DOWNLOAD_FOLDER_BASE', '/mnt/share/FOFANA')
+            # Sur Linux, TOUJOURS utiliser /mnt/share/FOFANA (ignorer config.env)
+            self.network_folder_base = '/mnt/share/FOFANA'
             # Vérifier si le partage est monté
             if not check_network_mount('/mnt/share'):
                 print("\n" + "="*80)
                 print("⚠️  AVERTISSEMENT : PARTAGE RÉSEAU NON MONTÉ")
                 print("="*80)
                 print(f"Le partage SMB n'est PAS monté sur /mnt/share")
-                print(f"Les fichiers CSV seront enregistrés UNIQUEMENT EN LOCAL dans:")
-                print(f"  → {self.base_dir}/EXPORT/")
+                print(f"ERREUR: Impossible d'enregistrer les fichiers CSV!")
                 print()
                 print("Pour envoyer vers le réseau, montez d'abord le partage :")
-                print("  sudo mount -t cifs //10.0.70.169/share /mnt/share -o username=VOTRE_USER")
+                print("  sudo mount -t cifs //10.0.70.169/SHARE /mnt/share -o username=ifofana,domain=PROSUMA")
                 print("="*80 + "\n")
                 self.network_folder_base = None  # Désactiver le réseau
         elif self.os_type == 'macos':
             # Sur macOS, utiliser /Volumes
-            self.network_folder_base = os.getenv('DOWNLOAD_FOLDER_BASE', '/Volumes/share/FOFANA')
+            self.network_folder_base = '/Volumes/share/FOFANA'
             if not check_network_mount('/Volumes/share'):
                 print("\n⚠️  AVERTISSEMENT : Partage réseau non monté sur /Volumes/share\n")
                 self.network_folder_base = None
@@ -706,27 +705,20 @@ class ProsumaAPICommandeReassortExtractor:
             logger.warning(f"⚠️ Aucune commande réassort à exporter pour le magasin {shop_code}")
             return None
         
-        # Créer le dossier local EXPORT
-        local_export_dir = os.path.join(self.base_dir, 'EXPORT')
-        try:
-            os.makedirs(local_export_dir, exist_ok=True)
-            logger.info(f"✅ Dossier local EXPORT créé/vérifié: {local_export_dir}")
-        except Exception as e:
-            logger.warning(f"⚠️ Impossible de créer le dossier local EXPORT: {e}")
-            local_export_dir = self.base_dir  # Fallback vers le dossier de base
+        # PAS de dossier EXPORT local - on écrit DIRECTEMENT sur le réseau
         
-        # Créer le dossier réseau
+        # Obtenir le dossier réseau pour ce magasin
         network_path = self.get_network_path_for_shop(shop_code)
         if not network_path:
             logger.error(f"❌ Impossible de créer le dossier réseau pour le magasin {shop_code}")
-            logger.error(f"   Le fichier sera uniquement sauvegardé localement dans: {local_export_dir}")
+            logger.error(f"   Sur Linux, vérifiez que le partage SMB est monté: sudo mount | grep /mnt/share")
+            return None
         else:
             logger.info(f"✅ Dossier réseau trouvé/créé: {network_path}")
         
-        # Créer un fichier temporaire local dans EXPORT
+        # Créer le nom du fichier CSV
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         filename = f'export_commande_reassort_{shop_code}_{timestamp}.csv'
-        local_filepath = os.path.join(local_export_dir, filename)
         
         # En-têtes CSV exacts demandés par l'utilisateur + colonnes de vérification
         fieldnames = [
@@ -771,8 +763,33 @@ class ProsumaAPICommandeReassortExtractor:
         ]
         
         try:
-            # Créer le fichier CSV local
-            with open(local_filepath, 'w', newline='', encoding='utf-8-sig') as csvfile:
+            # Déterminer le chemin final (réseau prioritaire)
+            if network_path:
+                # Vérifier que le dossier réseau existe
+                if not os.path.exists(network_path):
+                    logger.info(f"📁 Création du dossier réseau: {network_path}")
+                    if not create_network_folder(network_path):
+                        logger.error(f"❌ Impossible de créer le dossier réseau: {network_path}")
+                        return None
+                
+                # Construire le chemin complet du fichier réseau
+                if self.os_type in ['linux', 'macos']:
+                    final_filepath = os.path.join(network_path, filename)
+                else:
+                    # Windows: gérer les chemins UNC
+                    if network_path.startswith('\\\\'):
+                        final_filepath = f"{network_path}\\{filename}" if not network_path.endswith('\\') else f"{network_path}{filename}"
+                    else:
+                        final_filepath = os.path.join(network_path, filename)
+                
+                logger.info(f"📋 Écriture directe sur le réseau: {final_filepath}")
+            else:
+                logger.error(f"❌ Pas de chemin réseau disponible!")
+                logger.error(f"   Sur Linux, vérifiez que le partage SMB est monté: sudo mount | grep /mnt/share")
+                return None
+            
+            # Créer le fichier CSV DIRECTEMENT sur le réseau (pas de fichier local)
+            with open(final_filepath, 'w', newline='', encoding='utf-8-sig') as csvfile:
                 writer = csv.DictWriter(csvfile, fieldnames=fieldnames, delimiter=';')
                 writer.writeheader()
                 
@@ -831,104 +848,26 @@ class ProsumaAPICommandeReassortExtractor:
                     }
                     writer.writerow(row)
             
-            logger.info(f"✅ Fichier CSV créé localement: {local_filepath}")
-            logger.info(f"   📊 {len(orders)} commandes réassort exportées")
-            logger.info(f"   📋 {len(fieldnames)} colonnes par commande")
-            
-            # Copier vers le réseau si le chemin réseau est disponible
-            if network_path:
-                # Utiliser os.path.join mais corriger pour les chemins UNC Windows
-                if network_path.startswith('\\\\'):
-                    # Chemin UNC, utiliser directement la concaténation avec backslash
-                    network_filepath = f"{network_path}\\{filename}" if not network_path.endswith('\\') else f"{network_path}{filename}"
-                else:
-                    network_filepath = os.path.join(network_path, filename)
-                try:
-                    # Vérifier que le dossier réseau existe
-                    if not os.path.exists(network_path):
-                        logger.warning(f"⚠️ Le dossier réseau n'existe pas: {network_path}")
-                        logger.info(f"   Tentative de création...")
-                        if create_network_folder(network_path):
-                            logger.info(f"   ✅ Dossier créé avec succès")
-                        else:
-                            logger.error(f"   ❌ Impossible de créer le dossier")
-                            logger.info(f"📁 Fichier conservé uniquement localement: {local_filepath}")
-                            return local_filepath
-                    
-                    # Copier le fichier
-                    logger.info(f"📋 Tentative de copie vers: {network_filepath}")
-                    try:
-                        shutil.copy2(local_filepath, network_filepath)
-                        logger.info(f"✅ Commande copy2 exécutée sans erreur")
-                    except Exception as copy_ex:
-                        logger.error(f"❌❌❌ ERREUR LORS DE LA COPIE ❌❌❌")
-                        logger.error(f"   Exception: {copy_ex}")
-                        logger.error(f"   Type: {type(copy_ex).__name__}")
-                        raise
-                    
-                    # Attendre un peu pour que Windows synchronise
-                    time.sleep(0.5)
-                    
-                    # Vérifier que la copie a réussi avec plusieurs méthodes
-                    file_exists = os.path.exists(network_filepath)
-                    file_readable = False
-                    file_size_network = 0
-                    file_size_local = os.path.getsize(local_filepath)
-                    
-                    if file_exists:
-                        try:
-                            file_size_network = os.path.getsize(network_filepath)
-                            # Essayer d'ouvrir le fichier en lecture pour vérifier qu'il est accessible
-                            with open(network_filepath, 'r', encoding='utf-8-sig') as f:
-                                f.read(1)  # Lire au moins 1 caractère
-                            file_readable = True
-                        except Exception as read_ex:
-                            logger.warning(f"⚠️ Le fichier existe mais n'est pas lisible: {read_ex}")
-                    
-                    if file_exists and file_readable and file_size_network == file_size_local:
-                        logger.info(f"✅✅✅ FICHIER COPIÉ SUR LE RÉSEAU AVEC SUCCÈS ✅✅✅")
-                        logger.info(f"   📁 Chemin réseau: {network_filepath}")
-                        logger.info(f"   📊 Taille locale: {file_size_local:,} octets")
-                        logger.info(f"   📊 Taille réseau: {file_size_network:,} octets")
-                        logger.info(f"   ✅ Fichier vérifié et accessible")
-                        logger.info(f"📁 Fichier local conservé dans EXPORT: {local_filepath}")
-                        # IMPORTANT: Retourner le chemin réseau si la copie a réussi
-                        return network_filepath
-                    elif file_exists:
-                        logger.warning(f"⚠️⚠️⚠️ FICHIER COPIÉ MAIS PROBLÈME DE VÉRIFICATION ⚠️⚠️⚠️")
-                        logger.warning(f"   📁 Chemin réseau: {network_filepath}")
-                        logger.warning(f"   📊 Taille locale: {file_size_local:,} octets")
-                        logger.warning(f"   📊 Taille réseau: {file_size_network:,} octets")
-                        logger.warning(f"   ⚠️ Fichier existe mais peut ne pas être accessible")
-                        logger.info(f"📁 Fichier local conservé: {local_filepath}")
-                        return local_filepath
-                    else:
-                        logger.error(f"❌❌❌ LE FICHIER N'EXISTE PAS APRÈS LA COPIE ❌❌❌")
-                        logger.error(f"   Chemin attendu: {network_filepath}")
-                        logger.error(f"   Vérification os.path.exists(): {file_exists}")
-                        logger.error(f"   Taille locale: {file_size_local:,} octets")
-                        logger.info(f"📁 Fichier conservé uniquement localement: {local_filepath}")
-                        return local_filepath
-                        
-                except PermissionError as e:
-                    logger.error(f"❌ Erreur de permission lors de la copie sur le réseau: {e}")
-                    logger.info(f"📁 Fichier conservé uniquement localement: {local_filepath}")
-                    return local_filepath
-                except Exception as e:
-                    logger.error(f"❌ Erreur lors de la copie sur le réseau: {e}")
-                    logger.info(f"📁 Fichier conservé uniquement localement: {local_filepath}")
-                    return local_filepath
+            # Vérifier que le fichier a bien été créé
+            if os.path.exists(final_filepath):
+                file_size = os.path.getsize(final_filepath)
+                logger.info(f"✅✅✅ FICHIER CRÉÉ DIRECTEMENT SUR LE RÉSEAU ✅✅✅")
+                logger.info(f"   📁 Chemin: {final_filepath}")
+                logger.info(f"   📊 {len(orders)} commandes réassort exportées")
+                logger.info(f"   📊 Taille: {file_size:,} octets")
+                logger.info(f"   📋 {len(fieldnames)} colonnes par commande")
+                return final_filepath
             else:
-                logger.warning(f"⚠️ Pas de chemin réseau disponible, fichier conservé uniquement localement")
-                return local_filepath
+                logger.error(f"❌ Le fichier n'existe pas après création: {final_filepath}")
+                return None
             
-            # Si on arrive ici, la copie réseau a échoué ou n'a pas été tentée
-            # Retourner le chemin local
-            logger.info(f"📁 Fichier local conservé dans EXPORT: {local_filepath}")
-            return local_filepath
-            
+        except PermissionError as e:
+            logger.error(f"❌ Erreur de permission lors de l'écriture: {e}")
+            logger.error(f"   Vérifiez les permissions du partage réseau")
+            return None
         except Exception as e:
             logger.error(f"❌ Erreur lors de l'export CSV: {e}")
+            logger.error(f"   Type: {type(e).__name__}")
             return None
 
     def format_date(self, date_value):
@@ -1022,13 +961,7 @@ class ProsumaAPICommandeReassortExtractor:
         logger.info("DÉBUT DE L'EXTRACTION API PROSUMA - COMMANDES RÉASSORT")
         logger.info("=" * 60)
         
-        # Créer le dossier local EXPORT
-        local_export_dir = os.path.join(self.base_dir, 'EXPORT')
-        try:
-            os.makedirs(local_export_dir, exist_ok=True)
-            logger.info(f"✅ Dossier local EXPORT créé/vérifié: {local_export_dir}")
-        except Exception as e:
-            logger.warning(f"⚠️ Impossible de créer le dossier local EXPORT: {e}")
+        # PAS de dossier EXPORT local - on écrit DIRECTEMENT sur le réseau
         
         # Créer tous les dossiers réseau pour chaque magasin au début
         logger.info("=" * 60)
