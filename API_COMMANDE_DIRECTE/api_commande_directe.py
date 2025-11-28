@@ -467,19 +467,18 @@ class ProsumaAPICommandeDirecteExtractor:
                 
                 if self.extract_shop(shop_code):
                     successful_shops += 1
-                else:
-                    # Extraction échouée
-                    shop_name = self.shop_config.get(shop_code, {}).get(\'name\', \'Nom inconnu\')
-                    failed_shops.append((shop_code, shop_name))
                     logger.info(f"✅ Magasin {shop_code} traité avec succès")
                 else:
+                    # Extraction échouée
+                    shop_name = self.shop_config.get(shop_code, {}).get('name', 'Nom inconnu')
+                    failed_shops.append((shop_code, shop_name))
                     logger.error(f"❌ Erreur lors de l'extraction du magasin {shop_code}")
                     
             except Exception as e:
-                # Erreur lors de l\'extraction
-                shop_name = self.shop_config.get(shop_code, {}).get(\'name\', \'Nom inconnu\')
+                # Erreur lors de l'extraction
+                shop_name = self.shop_config.get(shop_code, {}).get('name', 'Nom inconnu')
                 failed_shops.append((shop_code, shop_name))
-                logger.error(f"❌ Erreur lors de l\'extraction du magasin {shop_code}: {e}")
+                logger.error(f"❌ Erreur lors de l'extraction du magasin {shop_code}: {e}")
         
         # Résumé final
         logger.info(f"\n{'='*60}")
