@@ -10,6 +10,7 @@ import csv
 import json
 import logging
 import shutil
+import platform
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 import urllib3
@@ -21,6 +22,39 @@ from utils import load_shop_config, build_network_path, create_network_folder, S
 
 # Désactiver les warnings SSL
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+# Détecter l'OS pour adapter les chemins
+def get_os_type():
+    """Détecte le système d'exploitation"""
+    system = platform.system().lower()
+    if system == 'linux':
+        return 'linux'
+    elif system == 'darwin':
+        return 'macos'
+    elif system == 'windows':
+        return 'windows'
+    else:
+        return 'unknown'
+
+def check_network_mount(path):
+    """Vérifie si un chemin réseau est monté (Linux/macOS uniquement)"""
+    os_type = get_os_type()
+    if os_type not in ['linux', 'macos']:
+        return True  # Sur Windows, pas besoin de vérifier le montage
+    
+    # Vérifier si le chemin existe et est accessible
+    if not os.path.exists(path):
+        return False
+    
+    # Vérifier si c'est un point de montage
+    try:
+        # Sur Linux, vérifier si c'est dans /proc/mounts
+        with open('/proc/mounts', 'r') as f:
+            mounts = f.read()
+            return path in mounts or any(path.startswith(mount.split()[1]) for mount in mounts.split('\n') if mount)
+    except:
+        # Si on ne peut pas lire /proc/mounts, vérifier juste l'existence
+        return os.path.exists(path) and os.path.isdir(path)
 
 class ProsumaAPICommandeDirecteExtractor:
     def __init__(self):
@@ -37,7 +71,35 @@ class ProsumaAPICommandeDirecteExtractor:
         
         # Configuration du dossier de téléchargement
         self.base_dir = os.path.dirname(os.path.abspath(__file__))
-        self.network_folder_base = os.getenv('DOWNLOAD_FOLDER_BASE', '\\10.0.70.169\\share\\FOFANA')
+        
+        # Détecter l'OS et adapter le chemin réseau
+        self.os_type = get_os_type()
+        
+        # Configurer le chemin réseau selon l'OS
+        if self.os_type == 'linux':
+            # Sur Linux, TOUJOURS utiliser /mnt/share/FOFANA (ignorer config.env)
+            self.network_folder_base = '/mnt/share/FOFANA'
+            # Vérifier si le partage est monté
+            if not check_network_mount('/mnt/share'):
+                print("\n" + "="*80)
+                print("⚠️  AVERTISSEMENT : PARTAGE RÉSEAU NON MONTÉ")
+                print("="*80)
+                print(f"Le partage SMB n'est PAS monté sur /mnt/share")
+                print(f"ERREUR: Impossible d'enregistrer les fichiers CSV!")
+                print()
+                print("Pour envoyer vers le réseau, montez d'abord le partage :")
+                print("  sudo mount -t cifs //10.0.70.169/SHARE /mnt/share -o username=ifofana,domain=PROSUMA")
+                print("="*80 + "\n")
+                self.network_folder_base = None  # Désactiver le réseau
+        elif self.os_type == 'macos':
+            # Sur macOS, utiliser /Volumes
+            self.network_folder_base = '/Volumes/share/FOFANA'
+            if not check_network_mount('/Volumes/share'):
+                print("\n⚠️  AVERTISSEMENT : Partage réseau non monté sur /Volumes/share\n")
+                self.network_folder_base = None
+        else:
+            # Sur Windows, utiliser le chemin UNC
+            self.network_folder_base = os.getenv('DOWNLOAD_FOLDER_BASE', '\\\\10.0.70.169\\share\\FOFANA')
         
         # Configuration des magasins
         self.shop_config = load_shop_config(os.path.dirname(self.base_dir))
@@ -62,30 +124,70 @@ class ProsumaAPICommandeDirecteExtractor:
 
     def setup_logging(self):
         """Configure le système de logging"""
-        # Créer le dossier de logs sur le réseau
+        # Essayer d'abord le dossier réseau, puis fallback local
+        log_file = None
         log_network_path = self.get_log_network_path()
+        
         if log_network_path:
-            log_file = os.path.join(log_network_path, f'api_commande_directe_{datetime.now().strftime("%Y%m%d")}.log')
-        else:
-            # Fallback local
-            log_file = os.path.join(self.base_dir, f'api_commande_directe_{datetime.now().strftime("%Y%m%d")}.log')
+            try:
+                # Vérifier que le dossier existe et est accessible
+                if os.path.exists(log_network_path) and os.access(log_network_path, os.W_OK):
+                    log_file = os.path.join(log_network_path, f'api_commande_directe_{datetime.now().strftime("%Y%m%d")}.log')
+                    # Tester l'écriture
+                    try:
+                        test_file = os.path.join(log_network_path, '.test_write')
+                        with open(test_file, 'w') as f:
+                            f.write('test')
+                        os.remove(test_file)
+                    except (PermissionError, OSError):
+                        # Pas d'accès en écriture, utiliser le fallback local
+                        log_file = None
+                else:
+                    log_file = None
+            except Exception as e:
+                # Erreur d'accès au réseau, utiliser le fallback local
+                log_file = None
         
-        # Configuration du logging
-        logging.basicConfig(
-            level=logging.INFO,
-            format='%(asctime)s - %(levelname)s - %(message)s',
-            handlers=[
-                logging.FileHandler(log_file, encoding='utf-8'),
-                SafeStreamHandler()
-            ]
-        )
+        # Fallback local si le réseau n'est pas accessible
+        if not log_file:
+            # Créer un dossier LOG local s'il n'existe pas
+            local_log_dir = os.path.join(self.base_dir, 'LOG')
+            try:
+                if not os.path.exists(local_log_dir):
+                    os.makedirs(local_log_dir, exist_ok=True)
+                log_file = os.path.join(local_log_dir, f'api_commande_directe_{datetime.now().strftime("%Y%m%d")}.log')
+            except Exception as e:
+                # Dernier recours : utiliser le dossier de base
+                log_file = os.path.join(self.base_dir, f'api_commande_directe_{datetime.now().strftime("%Y%m%d")}.log')
         
-        # Définir les permissions pour permettre à tous les utilisateurs d'écrire
-        from utils import set_log_file_permissions
-        set_log_file_permissions(log_file)
+        # Configuration du logging avec gestion d'erreur
+        try:
+            logging.basicConfig(
+                level=logging.INFO,
+                format='%(asctime)s - %(levelname)s - %(message)s',
+                handlers=[
+                    logging.FileHandler(log_file, encoding='utf-8'),
+                    SafeStreamHandler()
+                ]
+            )
+            
+            # Définir les permissions pour permettre à tous les utilisateurs d'écrire
+            from utils import set_log_file_permissions
+            set_log_file_permissions(log_file)
+            
+        except (PermissionError, OSError) as e:
+            # Si l'écriture échoue, utiliser seulement le stream handler
+            print(f"⚠️ Impossible d'écrire dans le fichier de log {log_file}: {e}")
+            print("⚠️ Les logs seront affichés uniquement dans la console")
+            logging.basicConfig(
+                level=logging.INFO,
+                format='%(asctime)s - %(levelname)s - %(message)s',
+                handlers=[SafeStreamHandler()]
+            )
         
         global logger
         logger = logging.getLogger(__name__)
+        logger.info(f"📝 Fichier de log: {log_file}")
 
     def setup_dates(self):
         """Configure les dates d'extraction"""
@@ -131,15 +233,27 @@ class ProsumaAPICommandeDirecteExtractor:
         
     def get_log_network_path(self):
         """Retourne le chemin réseau pour les logs"""
+        # Si le partage réseau n'est pas configuré ou pas monté, retourner None
         if not self.network_folder_base:
             return None
-        # Chemin: \\10.0.70.169\share\FOFANA\Etats Natacha\SCRIPT\LOG
-        base = self.network_folder_base.replace('/', '\\')
-        if base.endswith('\\'):
-            base = base[:-1]
-        log_path = f"{base}\\Etats Natacha\\SCRIPT\\LOG"
+        
+        # Construire le chemin selon l'OS
+        if self.os_type in ['linux', 'macos']:
+            # Linux/macOS : Utiliser des slashes /
+            base = self.network_folder_base
+            if base.endswith('/'):
+                base = base[:-1]
+            log_path = f"{base}/Etats Natacha/SCRIPT/LOG"
+        else:
+            # Windows : Utiliser des backslashes \
+            base = self.network_folder_base.replace('/', '\\')
+            if base.endswith('\\'):
+                base = base[:-1]
+            log_path = f"{base}\\Etats Natacha\\SCRIPT\\LOG"
+        
         if create_network_folder(log_path):
-            return log_path
+            if os.path.exists(log_path):
+                return log_path
         return None
 
     def test_api_connection(self, base_url):
