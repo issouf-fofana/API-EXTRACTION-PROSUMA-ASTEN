@@ -226,10 +226,40 @@ class ProsumaAPICommandeDirecteExtractor:
 
     def get_network_path_for_shop(self, shop_code):
         """Retourne le chemin réseau pour un magasin spécifique"""
-        network_path = build_network_path(self.network_folder_base, "COMMANDE_DIRECTE")
+        # Si le partage réseau n'est pas configuré ou pas monté, retourner None
+        if not self.network_folder_base:
+            return None
+        
+        # Construire le chemin selon l'OS : EXPORT/EXPORT_COMMANDE_DIRECTE
+        if self.os_type in ['linux', 'macos']:
+            # Linux/macOS : Utiliser des slashes /
+            base = self.network_folder_base
+            if base.endswith('/'):
+                base = base[:-1]
+            network_path = f"{base}/EXPORT/EXPORT_COMMANDE_DIRECTE"
+        else:
+            # Windows : Utiliser des backslashes \
+            base = self.network_folder_base.replace('/', '\\')
+            if base.endswith('\\'):
+                base = base[:-1]
+            network_path = f"{base}\\EXPORT\\EXPORT_COMMANDE_DIRECTE"
+        
+        # Créer le dossier s'il n'existe pas
         if create_network_folder(network_path):
-            return network_path
-        return None
+            # Vérifier que le dossier existe vraiment
+            if os.path.exists(network_path):
+                logger.info(f"✅ Dossier réseau vérifié: {network_path}")
+                return network_path
+            else:
+                logger.warning(f"⚠️ Le dossier réseau n'existe pas après création: {network_path}")
+                if self.os_type in ['linux', 'macos']:
+                    logger.warning(f"   Sur Linux, le partage SMB doit être monté sur: /mnt/share")
+                return None
+        else:
+            logger.warning(f"⚠️ Impossible de créer le dossier réseau: {network_path}")
+            if self.os_type in ['linux', 'macos']:
+                logger.warning(f"   Sur Linux, vérifiez que le partage SMB est monté: sudo mount | grep /mnt/share")
+            return None
         
     def get_log_network_path(self):
         """Retourne le chemin réseau pour les logs"""
@@ -322,6 +352,7 @@ class ProsumaAPICommandeDirecteExtractor:
                 'page_size': page_size,
                 'page': 1,
                 'is_direct': 'true',
+                'is_external': 'false',  # Exclure les commandes externes pour ne garder que les directes
                 'date_0': self.start_date.strftime('%Y-%m-%dT00:00:00'),
                 'date_1': self.end_date.strftime('%Y-%m-%dT23:59:59')
             }
@@ -367,12 +398,19 @@ class ProsumaAPICommandeDirecteExtractor:
                 'shop': shop_id,
                 'page_size': page_size,
                 'is_direct': 'true',
+                'is_external': 'false',  # Exclure les commandes externes pour ne garder que les directes
                 'date_0': self.start_date.strftime('%Y-%m-%dT00:00:00'),
                 'date_1': self.end_date.strftime('%Y-%m-%dT23:59:59')
             }
             if self.status_filter and self.status_filter.lower() == 'en attente de livraison':
                 params['is_awaiting_delivery'] = 'true'
                 logger.info(f"Filtre API: is_awaiting_delivery=true")
+            
+            logger.info(f"🔍 Filtres API appliqués:")
+            logger.info(f"   - is_direct: true (commandes directes)")
+            logger.info(f"   - is_external: false (exclure les commandes externes)")
+            if self.status_filter:
+                logger.info(f"   - status: {self.status_filter}")
             
             all_orders = []
             page = 1
@@ -429,19 +467,23 @@ class ProsumaAPICommandeDirecteExtractor:
     def export_to_csv(self, orders, shop_code, shop_name):
         """Exporte les commandes directes vers un fichier CSV"""
         if not orders:
-            logger.warning(f"Aucune commande directe à exporter pour le magasin {shop_code}")
+            logger.warning(f"⚠️ Aucune commande directe à exporter pour le magasin {shop_code}")
             return None
         
-        # Créer le dossier réseau
+        # PAS de dossier EXPORT local - on écrit DIRECTEMENT sur le réseau
+        
+        # Obtenir le dossier réseau
         network_path = self.get_network_path_for_shop(shop_code)
         if not network_path:
-            logger.error(f"Impossible de créer le dossier réseau pour le magasin {shop_code}")
+            logger.error(f"❌ Impossible de créer le dossier réseau pour le magasin {shop_code}")
+            logger.error(f"   Sur Linux, vérifiez que le partage SMB est monté: sudo mount | grep /mnt/share")
             return None
+        else:
+            logger.info(f"✅ Dossier réseau trouvé/créé: {network_path}")
         
-        # Créer un fichier temporaire local
+        # Créer le nom du fichier CSV
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         filename = f'export_commande_directe_{shop_code}_{timestamp}.csv'
-        local_filepath = os.path.join(self.base_dir, filename)
         
         # En-têtes CSV basés sur les champs disponibles
         fieldnames = [
@@ -451,8 +493,33 @@ class ProsumaAPICommandeDirecteExtractor:
         ]
         
         try:
-            # Créer le fichier CSV local
-            with open(local_filepath, 'w', newline='', encoding='utf-8-sig') as csvfile:
+            # Déterminer le chemin final (réseau prioritaire)
+            if network_path:
+                # Vérifier que le dossier réseau existe
+                if not os.path.exists(network_path):
+                    logger.info(f"📁 Création du dossier réseau: {network_path}")
+                    if not create_network_folder(network_path):
+                        logger.error(f"❌ Impossible de créer le dossier réseau: {network_path}")
+                        return None
+                
+                # Construire le chemin complet du fichier réseau
+                if self.os_type in ['linux', 'macos']:
+                    final_filepath = os.path.join(network_path, filename)
+                else:
+                    # Windows: gérer les chemins UNC
+                    if network_path.startswith('\\\\'):
+                        final_filepath = f"{network_path}\\{filename}" if not network_path.endswith('\\') else f"{network_path}{filename}"
+                    else:
+                        final_filepath = os.path.join(network_path, filename)
+                
+                logger.info(f"📋 Écriture directe sur le réseau: {final_filepath}")
+            else:
+                logger.error(f"❌ Pas de chemin réseau disponible!")
+                logger.error(f"   Sur Linux, vérifiez que le partage SMB est monté: sudo mount | grep /mnt/share")
+                return None
+            
+            # Créer le fichier CSV DIRECTEMENT sur le réseau (pas de fichier local)
+            with open(final_filepath, 'w', newline='', encoding='utf-8-sig') as csvfile:
                 writer = csv.DictWriter(csvfile, fieldnames=fieldnames, delimiter=';')
                 writer.writeheader()
                 
@@ -477,23 +544,26 @@ class ProsumaAPICommandeDirecteExtractor:
                     }
                     writer.writerow(row)
             
-            logger.info(f"✅ Fichier CSV créé localement: {local_filepath}")
-            logger.info(f"   {len(orders)} commandes directes exportées")
-            logger.info(f"   {len(fieldnames)} colonnes par commande")
+            # Vérifier que le fichier a bien été créé
+            if os.path.exists(final_filepath):
+                file_size = os.path.getsize(final_filepath)
+                logger.info(f"✅✅✅ FICHIER CRÉÉ DIRECTEMENT SUR LE RÉSEAU ✅✅✅")
+                logger.info(f"   📁 Chemin: {final_filepath}")
+                logger.info(f"   📊 {len(orders)} commandes directes exportées")
+                logger.info(f"   📊 Taille: {file_size:,} octets")
+                logger.info(f"   📋 {len(fieldnames)} colonnes par commande")
+                return final_filepath
+            else:
+                logger.error(f"❌ Le fichier n'existe pas après création: {final_filepath}")
+                return None
             
-            # Copier vers le réseau et supprimer le fichier local
-            network_filepath = os.path.join(network_path, filename)
-            shutil.copy2(local_filepath, network_filepath)
-            logger.info(f"✅ Fichier copié sur le réseau: {network_filepath}")
-            
-            # Supprimer le fichier local
-            os.remove(local_filepath)
-            logger.info(f"🗑️ Fichier local supprimé")
-            
-            return network_filepath
-            
+        except PermissionError as e:
+            logger.error(f"❌ Erreur de permission lors de l'écriture: {e}")
+            logger.error(f"   Vérifiez les permissions du partage réseau")
+            return None
         except Exception as e:
             logger.error(f"❌ Erreur lors de l'export CSV: {e}")
+            logger.error(f"   Type: {type(e).__name__}")
             return None
 
     def extract_shop(self, shop_code):
@@ -568,6 +638,8 @@ class ProsumaAPICommandeDirecteExtractor:
             logger.info(f"✅ Dossier réseau créé: {network_path}")
         else:
             logger.warning("⚠️ Impossible de créer le dossier réseau")
+            if self.os_type in ['linux', 'macos']:
+                logger.warning("   Sur Linux, vérifiez que le partage SMB est monté: sudo mount | grep /mnt/share")
         
         successful_shops = 0
         total_shops = len(self.shop_codes)
