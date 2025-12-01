@@ -290,7 +290,7 @@ class ProsumaAPICommandeDirecteExtractor:
         """Teste la connexion à l'API"""
         try:
             test_url = f"{base_url}/api/user/"
-            response = self.session.get(test_url, timeout=10)
+            response = self.session.get(test_url, timeout=60)
             if response.status_code == 200:
                 logger.info(f"✅ Connexion API réussie: {base_url}")
                 return True
@@ -351,8 +351,7 @@ class ProsumaAPICommandeDirecteExtractor:
                 'shop': shop_id,
                 'page_size': page_size,
                 'page': 1,
-                'is_direct': 'true',
-                'is_external': 'false',  # Exclure les commandes externes pour ne garder que les directes
+                'is_direct': 'true',  # Récupérer uniquement les commandes directes
                 'date_0': self.start_date.strftime('%Y-%m-%dT00:00:00'),
                 'date_1': self.end_date.strftime('%Y-%m-%dT23:59:59')
             }
@@ -397,8 +396,7 @@ class ProsumaAPICommandeDirecteExtractor:
             params = {
                 'shop': shop_id,
                 'page_size': page_size,
-                'is_direct': 'true',
-                'is_external': 'false',  # Exclure les commandes externes pour ne garder que les directes
+                'is_direct': 'true',  # Récupérer uniquement les commandes directes
                 'date_0': self.start_date.strftime('%Y-%m-%dT00:00:00'),
                 'date_1': self.end_date.strftime('%Y-%m-%dT23:59:59')
             }
@@ -407,8 +405,7 @@ class ProsumaAPICommandeDirecteExtractor:
                 logger.info(f"Filtre API: is_awaiting_delivery=true")
             
             logger.info(f"🔍 Filtres API appliqués:")
-            logger.info(f"   - is_direct: true (commandes directes)")
-            logger.info(f"   - is_external: false (exclure les commandes externes)")
+            logger.info(f"   - is_direct: true (commandes directes uniquement)")
             if self.status_filter:
                 logger.info(f"   - status: {self.status_filter}")
             
