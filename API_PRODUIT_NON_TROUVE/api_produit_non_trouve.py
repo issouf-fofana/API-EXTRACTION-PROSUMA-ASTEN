@@ -9,7 +9,6 @@ import os
 import csv
 import json
 import logging
-import shutil
 import platform
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
@@ -153,13 +152,6 @@ class ProsumaAPIProduitNonTrouveExtractor:
         
         print(f"Dates par défaut: {self.start_date.strftime('%Y-%m-%d %H:%M:%S')} à {self.end_date.strftime('%Y-%m-%d %H:%M:%S')}")
 
-    def get_network_path_for_shop(self, shop_code):
-        """Retourne le chemin réseau pour un magasin spécifique"""
-        network_path = build_network_path(self.network_folder_base, "PRODUIT_NON_TROUVE")
-        if create_network_folder(network_path):
-            return network_path
-        return None
-        
     def get_log_network_path(self):
         """Retourne le chemin réseau pour les logs"""
         if not self.network_folder_base:
@@ -501,21 +493,27 @@ class ProsumaAPIProduitNonTrouveExtractor:
         return important_fields + field_list
 
     def export_to_csv(self, events, shop_code, shop_name):
-        """Exporte les événements vers un fichier CSV"""
+        """Exporte les événements vers un fichier CSV directement dans le dossier ASTEN"""
         if not events:
             logger.warning(f"Aucun événement à exporter pour le magasin {shop_code}")
             return None
         
-        # Créer le dossier réseau
-        network_path = self.get_network_path_for_shop(shop_code)
-        if not network_path:
-            logger.error(f"Impossible de créer le dossier réseau pour le magasin {shop_code}")
-            return None
+        # Chemin direct vers le dossier ASTEN (racine, pas de dossier par magasin)
+        asten_extraction_path = r"\\10.0.70.169\share\ASTEN\GESTION DES INCONUS MAG\MAG ASTEN\EXTRACTIONS\PRODUIT NON TROUVES"
         
-        # Créer un fichier temporaire local
+        # Créer le dossier s'il n'existe pas
+        if not os.path.exists(asten_extraction_path):
+            try:
+                os.makedirs(asten_extraction_path)
+                logger.info(f"📁 Dossier ASTEN créé: {asten_extraction_path}")
+            except Exception as e:
+                logger.error(f"❌ Impossible de créer le dossier ASTEN: {e}")
+                return None
+        
+        # Créer le nom du fichier
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         filename = f'export_produit_non_trouve_{shop_code}_{timestamp}.csv'
-        local_filepath = os.path.join(self.base_dir, filename)
+        final_filepath = os.path.join(asten_extraction_path, filename)
         
         # Détecter dynamiquement tous les champs disponibles
         fieldnames = self._get_all_fields_from_events(events)
@@ -524,8 +522,8 @@ class ProsumaAPIProduitNonTrouveExtractor:
         logger.info(f"   Champs: {', '.join(fieldnames[:10])}{'...' if len(fieldnames) > 10 else ''}")
         
         try:
-            # Créer le fichier CSV local
-            with open(local_filepath, 'w', newline='', encoding='utf-8') as csvfile:
+            # Créer le fichier CSV DIRECTEMENT sur le réseau (pas de fichier local)
+            with open(final_filepath, 'w', newline='', encoding='utf-8-sig') as csvfile:
                 writer = csv.DictWriter(csvfile, fieldnames=fieldnames, delimiter=';')
                 writer.writeheader()
                 
@@ -544,173 +542,28 @@ class ProsumaAPIProduitNonTrouveExtractor:
                     
                     writer.writerow(row)
             
-            logger.info(f"✅ Fichier CSV créé localement: {local_filepath}")
-            logger.info(f"   {len(events)} événements exportés")
-            logger.info(f"   {len(fieldnames)} colonnes par événement")
-            
-            # Copier vers le réseau et supprimer le fichier local
-            network_filepath = os.path.join(network_path, filename)
-            shutil.copy2(local_filepath, network_filepath)
-            logger.info(f"✅ Fichier copié sur le réseau: {network_filepath}")
-            
-            # Copier également vers le dossier ASTEN si le magasin est dans le mapping
-            self.copy_to_asten_folder(local_filepath, filename, shop_code)
-            
-            # Supprimer le fichier local
-            os.remove(local_filepath)
-            logger.info(f"🗑️ Fichier local supprimé")
-            
-            return network_filepath
-            
-        except Exception as e:
-            logger.error(f"❌ Erreur lors de l'export CSV: {e}")
-            return None
-    
-    def get_asten_folder_name(self, shop_code, shop_name):
-        """Détermine le nom du dossier ASTEN pour un magasin
-        
-        Cherche d'abord un dossier existant qui correspond au magasin.
-        Si aucun dossier n'existe, retourne un nom généré à partir du nom du magasin.
-        
-        Args:
-            shop_code: Code du magasin
-            shop_name: Nom du magasin
-            
-        Returns:
-            Nom du dossier ASTEN ou None si aucun dossier trouvé/créable
-        """
-        try:
-            asten_base_path = r"\\10.0.70.169\share\ASTEN\GESTION DES INCONUS MAG\MAG ASTEN"
-            
-            # Vérifier si le dossier ASTEN existe
-            if not os.path.exists(asten_base_path):
-                logger.warning(f"⚠️ Dossier ASTEN introuvable: {asten_base_path}")
+            # Vérifier que le fichier a bien été créé
+            if os.path.exists(final_filepath):
+                file_size = os.path.getsize(final_filepath)
+                logger.info(f"✅✅✅ FICHIER CRÉÉ DIRECTEMENT SUR LE RÉSEAU ASTEN ✅✅✅")
+                logger.info(f"   📁 Chemin: {final_filepath}")
+                logger.info(f"   📊 {len(events)} événements exportés")
+                logger.info(f"   📊 Taille: {file_size:,} octets")
+                logger.info(f"   📋 {len(fieldnames)} colonnes par événement")
+                return final_filepath
+            else:
+                logger.error(f"❌ Le fichier n'existe pas après création: {final_filepath}")
                 return None
             
-            # Lister les dossiers existants dans ASTEN
-            existing_folders = []
-            try:
-                existing_folders = [f for f in os.listdir(asten_base_path) 
-                                  if os.path.isdir(os.path.join(asten_base_path, f))]
-            except Exception as e:
-                logger.warning(f"⚠️ Impossible de lister les dossiers ASTEN: {e}")
-            
-            # Nettoyer le nom du magasin pour la recherche
-            shop_name_clean = shop_name.upper().strip()
-            
-            # Créer des variantes de recherche
-            search_terms = []
-            
-            # Variante 1: Nom complet
-            search_terms.append(shop_name_clean)
-            
-            # Variante 2: Mots clés principaux
-            # Ex: "SUPER U VALLON" -> ["SUPER", "U", "VALLON"]
-            words = shop_name_clean.split()
-            search_terms.extend(words)
-            
-            # Variante 3: Derniers mots (souvent le lieu)
-            if len(words) >= 2:
-                search_terms.append(' '.join(words[-2:]))
-            if len(words) >= 1:
-                search_terms.append(words[-1])
-            
-            # Variante 4: Premiers mots (souvent la marque)
-            if len(words) >= 2:
-                search_terms.append(' '.join(words[:2]))
-            
-            # Chercher un dossier existant qui correspond
-            for folder in existing_folders:
-                folder_upper = folder.upper()
-                
-                # Correspondance exacte
-                if folder_upper == shop_name_clean:
-                    logger.info(f"📁 Dossier ASTEN trouvé (exact): {folder}")
-                    return folder
-                
-                # Correspondance partielle (le nom du dossier contient un terme de recherche)
-                for term in search_terms:
-                    if len(term) >= 3 and term in folder_upper:
-                        logger.info(f"📁 Dossier ASTEN trouvé (partiel): {folder} (recherche: {term})")
-                        return folder
-                
-                # Correspondance inverse (un terme de recherche contient le nom du dossier)
-                for term in search_terms:
-                    if len(folder_upper) >= 3 and folder_upper in term:
-                        logger.info(f"📁 Dossier ASTEN trouvé (inverse): {folder} (recherche: {term})")
-                        return folder
-            
-            # Aucun dossier existant trouvé, générer un nom
-            # Utiliser le nom du magasin en supprimant les caractères problématiques
-            generated_name = shop_name_clean
-            
-            # Remplacer les caractères invalides pour un nom de dossier Windows
-            invalid_chars = '<>:"/\\|?*'
-            for char in invalid_chars:
-                generated_name = generated_name.replace(char, '')
-            
-            # Limiter la longueur (Windows a une limite de 255 caractères)
-            if len(generated_name) > 50:
-                # Garder les mots importants (premiers et derniers)
-                words = generated_name.split()
-                if len(words) > 2:
-                    generated_name = f"{words[0]} {words[-1]}"
-                else:
-                    generated_name = generated_name[:50]
-            
-            logger.info(f"📁 Aucun dossier ASTEN existant trouvé, création avec nom: {generated_name}")
-            return generated_name
-            
+        except PermissionError as e:
+            logger.error(f"❌ Erreur de permission lors de l'écriture: {e}")
+            logger.error(f"   Vérifiez les permissions du partage réseau")
+            return None
         except Exception as e:
-            logger.error(f"❌ Erreur lors de la détermination du dossier ASTEN: {e}")
+            logger.error(f"❌ Erreur lors de l'export CSV: {e}")
+            logger.error(f"   Type: {type(e).__name__}")
             return None
     
-    def copy_to_asten_folder(self, local_filepath, filename, shop_code):
-        """Copie le fichier vers le dossier ASTEN correspondant au magasin
-        
-        Args:
-            local_filepath: Chemin du fichier local à copier
-            filename: Nom du fichier
-            shop_code: Code du magasin
-        """
-        try:
-            # Récupérer le nom du magasin depuis la config
-            shop_info = self.shop_config.get(shop_code)
-            if not shop_info:
-                logger.warning(f"⚠️ Informations du magasin {shop_code} introuvables dans la config")
-                return
-            
-            shop_name = shop_info.get('name', f'MAGASIN_{shop_code}')
-            
-            # Déterminer le nom du dossier ASTEN
-            asten_folder_name = self.get_asten_folder_name(shop_code, shop_name)
-            
-            if not asten_folder_name:
-                logger.warning(f"⚠️ Impossible de déterminer le dossier ASTEN pour {shop_code} - copie ignorée")
-                return
-            
-            # Construire le chemin vers le dossier ASTEN
-            asten_base_path = r"\\10.0.70.169\share\ASTEN\GESTION DES INCONUS MAG\MAG ASTEN"
-            asten_shop_path = os.path.join(asten_base_path, asten_folder_name)
-            asten_extraction_path = os.path.join(asten_shop_path, "EXTRACTION DU JOUR")
-            
-            # Créer les dossiers s'ils n'existent pas
-            if not os.path.exists(asten_shop_path):
-                os.makedirs(asten_shop_path)
-                logger.info(f"📁 Dossier magasin créé: {asten_shop_path}")
-            
-            if not os.path.exists(asten_extraction_path):
-                os.makedirs(asten_extraction_path)
-                logger.info(f"📁 Dossier 'EXTRACTION DU JOUR' créé: {asten_extraction_path}")
-            
-            # Copier le fichier vers ASTEN
-            asten_filepath = os.path.join(asten_extraction_path, filename)
-            shutil.copy2(local_filepath, asten_filepath)
-            logger.info(f"✅ Fichier copié vers ASTEN: {asten_filepath}")
-            
-        except Exception as e:
-            logger.warning(f"⚠️ Erreur lors de la copie vers ASTEN: {e}")
-            logger.warning(f"⚠️ Le fichier principal a été créé avec succès, seule la copie ASTEN a échoué")
 
     def extract_shop(self, shop_code):
         """Extrait les événements pour un magasin spécifique"""
@@ -778,12 +631,16 @@ class ProsumaAPIProduitNonTrouveExtractor:
         logger.info("DÉBUT DE L'EXTRACTION API PROSUMA - PRODUITS NON TROUVÉS")
         logger.info("=" * 60)
         
-        # Créer le dossier réseau au début
-        network_path = self.get_network_path_for_shop("PRODUIT_NON_TROUVE")
-        if network_path:
-            logger.info(f"✅ Dossier réseau créé: {network_path}")
+        # Vérifier que le dossier ASTEN existe
+        asten_extraction_path = r"\\10.0.70.169\share\ASTEN\GESTION DES INCONUS MAG\MAG ASTEN\EXTRACTIONS\PRODUIT NON TROUVES"
+        if not os.path.exists(asten_extraction_path):
+            try:
+                os.makedirs(asten_extraction_path)
+                logger.info(f"✅ Dossier ASTEN créé: {asten_extraction_path}")
+            except Exception as e:
+                logger.warning(f"⚠️ Impossible de créer le dossier ASTEN: {e}")
         else:
-            logger.warning("⚠️ Impossible de créer le dossier réseau")
+            logger.info(f"✅ Dossier ASTEN vérifié: {asten_extraction_path}")
         
         successful_shops = 0
         total_shops = len(self.shop_codes)
