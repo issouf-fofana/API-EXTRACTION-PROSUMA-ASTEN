@@ -352,6 +352,7 @@ class ProsumaAPICommandeDirecteExtractor:
                 'page_size': page_size,
                 'page': 1,
                 'is_direct': 'true',  # Récupérer uniquement les commandes directes
+                'is_central': 'false',  # Exclure les commandes centrales
                 'date_0': self.start_date.strftime('%Y-%m-%dT00:00:00'),
                 'date_1': self.end_date.strftime('%Y-%m-%dT23:59:59')
             }
@@ -397,6 +398,7 @@ class ProsumaAPICommandeDirecteExtractor:
                 'shop': shop_id,
                 'page_size': page_size,
                 'is_direct': 'true',  # Récupérer uniquement les commandes directes
+                'is_central': 'false',  # Exclure les commandes centrales
                 'date_0': self.start_date.strftime('%Y-%m-%dT00:00:00'),
                 'date_1': self.end_date.strftime('%Y-%m-%dT23:59:59')
             }
@@ -406,6 +408,7 @@ class ProsumaAPICommandeDirecteExtractor:
             
             logger.info(f"🔍 Filtres API appliqués:")
             logger.info(f"   - is_direct: true (commandes directes uniquement)")
+            logger.info(f"   - is_central: false (exclure les commandes centrales)")
             if self.status_filter:
                 logger.info(f"   - status: {self.status_filter}")
             
@@ -436,7 +439,36 @@ class ProsumaAPICommandeDirecteExtractor:
                 
                 page += 1
             
-            # Filtrage post-récupération si nécessaire
+            # Filtrage post-récupération pour exclure les commandes centrales (sécurité supplémentaire)
+            original_count = len(all_orders)
+            filtered_orders = []
+            central_orders_excluded = 0
+            
+            for order in all_orders:
+                # Vérifier is_central dans la commande elle-même
+                is_central = order.get('is_central', None)
+                
+                # Si pas dans order, chercher dans supplier
+                if is_central is None:
+                    supplier = order.get('supplier', {})
+                    if isinstance(supplier, dict):
+                        is_central = supplier.get('is_central', None)
+                
+                # Exclure les commandes centrales (is_central=True)
+                if is_central is not None and is_central:
+                    central_orders_excluded += 1
+                    logger.debug(f"❌ Commande centrale exclue: {order.get('reference', order.get('id', 'N/A'))} (is_central=True)")
+                else:
+                    # Commande directe non centrale, on la garde
+                    filtered_orders.append(order)
+            
+            if central_orders_excluded > 0:
+                logger.info(f"🔍 Filtrage post-récupération: {central_orders_excluded} commande(s) centrale(s) exclue(s)")
+                logger.info(f"   Commandes directes retenues: {len(filtered_orders):,}/{original_count:,}")
+            
+            all_orders = filtered_orders
+            
+            # Filtrage post-récupération pour le statut si nécessaire
             if self.status_filter and self.status_filter.lower() != 'en attente de livraison':
                 logger.info(f"Filtrage post-récupération pour le statut: '{self.status_filter}'")
                 original_count = len(all_orders)
