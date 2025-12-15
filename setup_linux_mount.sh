@@ -87,13 +87,20 @@ fi
 # Demander les identifiants
 echo
 echo "🔐 Identifiants de connexion au partage réseau:"
-read -p "Nom d'utilisateur: " USERNAME
+read -p "Nom d'utilisateur (ex: ifofana): " USERNAME
+read -p "Domaine Windows (laisser vide pour PROSUMA): " DOMAIN
 read -sp "Mot de passe: " PASSWORD
 echo
 echo
 
+# Valeur par défaut du domaine si vide
+if [ -z "$DOMAIN" ]; then
+    DOMAIN="PROSUMA"
+fi
+
 # Options de montage
-MOUNT_OPTIONS="username=$USERNAME,password=$PASSWORD,uid=$(id -u),gid=$(id -g),file_mode=0755,dir_mode=0755"
+# IMPORTANT : on force maintenant le domaine Windows (PROSUMA par défaut)
+MOUNT_OPTIONS="username=$USERNAME,password=$PASSWORD,domain=$DOMAIN,uid=$(id -u),gid=$(id -g),file_mode=0755,dir_mode=0755"
 
 # Monter le partage
 echo "🔄 Montage du partage réseau..."
