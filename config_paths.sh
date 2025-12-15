@@ -12,12 +12,19 @@
 LINUX_LOCAL_PATH="$HOME/API-EXTRACTION-PROSUMA-ASTEN"
 
 # Chemin du point de montage SMB/CIFS (si vous montez le partage réseau)
-LINUX_MOUNT_PATH="/mnt/share/FOFANA/Etats Natacha/SCRIPT/EXTRACTION_PROSUMA"
+# On monte la racine du partage Windows //10.0.70.169/SHARE sur /mnt/share
+LINUX_MOUNT_PATH="/mnt/share"
 
 # Informations du partage réseau Windows
 NETWORK_IP="10.0.70.169"
 NETWORK_SHARE="share"
-NETWORK_PATH="FOFANA/Etats Natacha/SCRIPT/EXTRACTION_PROSUMA"
+# On monte la RACINE du partage (FOFANA sera donc visible sous /mnt/share/FOFANA)
+NETWORK_PATH=""
+
+# Identifiants par défaut pour le montage SMB (à adapter si besoin)
+MOUNT_USERNAME="ifofana"
+MOUNT_PASSWORD="youssef59@Alienware"
+MOUNT_DOMAIN="PROSUMA"
 
 # ==================== macOS ====================
 # Chemin du volume réseau monté sur macOS
@@ -84,6 +91,9 @@ export LINUX_MOUNT_PATH
 export NETWORK_IP
 export NETWORK_SHARE
 export NETWORK_PATH
+export MOUNT_USERNAME
+export MOUNT_PASSWORD
+export MOUNT_DOMAIN
 export MACOS_VOLUME_PATH
 export MACOS_LOCAL_PATH
 export WINDOWS_UNC_PATH

@@ -30,7 +30,11 @@ fi
 echo "📋 Configuration:"
 echo "   Serveur:  $NETWORK_IP"
 echo "   Partage:  //$NETWORK_IP/$NETWORK_SHARE"
-echo "   Chemin:   $NETWORK_PATH"
+if [ -n "$NETWORK_PATH" ]; then
+    echo "   Chemin:   $NETWORK_PATH"
+else
+    echo "   Chemin:   (racine du partage)"
+fi
 echo "   Point de montage: $LINUX_MOUNT_PATH"
 echo
 
@@ -84,7 +88,64 @@ if mount | grep -q "$LINUX_MOUNT_PATH"; then
     fi
 fi
 
-# Demander les identifiants
+# Fonction utilitaire pour tenter un montage avec des identifiants donnés
+try_mount() {
+    local u="$1"
+    local p="$2"
+    local d="$3"
+
+    if [ -z "$d" ]; then
+        d="PROSUMA"
+    fi
+
+    local OPTIONS="username=$u,password=$p,domain=$d,uid=$(id -u),gid=$(id -g),file_mode=0755,dir_mode=0755"
+
+    echo "🔄 Montage du partage réseau avec l'utilisateur '$d\\$u'..."
+    if [ -n "$NETWORK_PATH" ]; then
+        FULL_SHARE="//$NETWORK_IP/$NETWORK_SHARE/$NETWORK_PATH"
+    else
+        FULL_SHARE="//$NETWORK_IP/$NETWORK_SHARE"
+    fi
+
+    sudo mount -t cifs "$FULL_SHARE" "$LINUX_MOUNT_PATH" -o "$OPTIONS"
+    MOUNT_RC=$?
+
+    if [ $MOUNT_RC -eq 0 ]; then
+        # Succès
+        MOUNT_OPTIONS="$OPTIONS"
+        echo "✅ Partage monté avec succès !"
+        echo "   Accessible à: $LINUX_MOUNT_PATH"
+        echo
+        echo "📁 Contenu de $LINUX_MOUNT_PATH :"
+        ls "$LINUX_MOUNT_PATH"
+        echo
+        echo "💡 Pour démonter: sudo umount $LINUX_MOUNT_PATH"
+        echo "💡 Pour monter automatiquement au démarrage, ajoutez dans /etc/fstab:"
+        echo "   $FULL_SHARE $LINUX_MOUNT_PATH cifs $MOUNT_OPTIONS 0 0"
+    fi
+
+    return $MOUNT_RC
+}
+
+CONFIG_FILE="$SCRIPT_DIR/config_paths.sh"
+
+# 1) Essayer automatiquement avec les identifiants enregistrés (si présents)
+if [ -n "$MOUNT_USERNAME" ] && [ -n "$MOUNT_PASSWORD" ]; then
+    echo
+    echo "🔐 Utilisation des identifiants enregistrés: ${MOUNT_DOMAIN:-PROSUMA}\\$MOUNT_USERNAME"
+    if try_mount "$MOUNT_USERNAME" "$MOUNT_PASSWORD" "${MOUNT_DOMAIN:-PROSUMA}"; then
+        echo "✅ Montage réussi avec les identifiants enregistrés."
+        echo "============================================================"
+        exit 0
+    else
+        echo "⚠️  Échec du montage avec les identifiants enregistrés."
+        echo "    Un nouveau mot de passe vous sera demandé."
+        # S'assurer qu'aucun montage partiel ne reste
+        sudo umount "$LINUX_MOUNT_PATH" 2>/dev/null || true
+    fi
+fi
+
+# 2) Demander de nouveaux identifiants à l'utilisateur
 echo
 echo "🔐 Identifiants de connexion au partage réseau:"
 read -p "Nom d'utilisateur (ex: ifofana): " USERNAME
@@ -93,44 +154,42 @@ read -sp "Mot de passe: " PASSWORD
 echo
 echo
 
-# Valeur par défaut du domaine si vide
 if [ -z "$DOMAIN" ]; then
     DOMAIN="PROSUMA"
 fi
 
-# Options de montage
-# IMPORTANT : on force maintenant le domaine Windows (PROSUMA par défaut)
-MOUNT_OPTIONS="username=$USERNAME,password=$PASSWORD,domain=$DOMAIN,uid=$(id -u),gid=$(id -g),file_mode=0755,dir_mode=0755"
+if ! try_mount "$USERNAME" "$PASSWORD" "$DOMAIN"; then
+    echo "❌ Échec du montage avec les nouveaux identifiants."
+    echo "   Vérifiez la connectivité réseau et les droits du compte."
+    echo "============================================================"
+    exit 1
+fi
 
-# Monter le partage
-echo "🔄 Montage du partage réseau..."
-FULL_SHARE="//$NETWORK_IP/$NETWORK_SHARE/$NETWORK_PATH"
-
-sudo mount -t cifs "$FULL_SHARE" "$LINUX_MOUNT_PATH" -o "$MOUNT_OPTIONS"
-
-if [ $? -eq 0 ]; then
-    echo "✅ Partage monté avec succès !"
-    echo "   Accessible à: $LINUX_MOUNT_PATH"
-    echo
-    
-    # Tester l'accès
-    if [ -f "$LINUX_MOUNT_PATH/requirements.txt" ]; then
-        echo "✅ Fichiers du projet accessibles"
+# 3) Mise à jour automatique de config_paths.sh avec les nouveaux identifiants
+if [ -w "$CONFIG_FILE" ]; then
+    echo "📝 Mise à jour des identifiants enregistrés dans config_paths.sh..."
+    # Remplacer les lignes existantes (si présentes), sinon les ajouter à la fin
+    if grep -q "^MOUNT_USERNAME=" "$CONFIG_FILE"; then
+        sed -i.bak "s/^MOUNT_USERNAME=.*/MOUNT_USERNAME=\"$USERNAME\"/" "$CONFIG_FILE"
     else
-        echo "⚠️  Le partage est monté mais les fichiers ne sont pas accessibles"
-        echo "   Vérifiez le chemin: $FULL_SHARE"
+        echo "MOUNT_USERNAME=\"$USERNAME\"" >> "$CONFIG_FILE"
     fi
-    
-    echo
-    echo "💡 Pour démonter: sudo umount $LINUX_MOUNT_PATH"
-    echo "💡 Pour monter automatiquement au démarrage, ajoutez dans /etc/fstab:"
-    echo "   $FULL_SHARE $LINUX_MOUNT_PATH cifs $MOUNT_OPTIONS 0 0"
+
+    if grep -q "^MOUNT_PASSWORD=" "$CONFIG_FILE"; then
+        sed -i.bak "s/^MOUNT_PASSWORD=.*/MOUNT_PASSWORD=\"$PASSWORD\"/" "$CONFIG_FILE"
+    else
+        echo "MOUNT_PASSWORD=\"$PASSWORD\"" >> "$CONFIG_FILE"
+    fi
+
+    if grep -q "^MOUNT_DOMAIN=" "$CONFIG_FILE"; then
+        sed -i.bak "s/^MOUNT_DOMAIN=.*/MOUNT_DOMAIN=\"$DOMAIN\"/" "$CONFIG_FILE"
+    else
+        echo "MOUNT_DOMAIN=\"$DOMAIN\"" >> "$CONFIG_FILE"
+    fi
+
+    echo "✅ Identifiants mis à jour dans $CONFIG_FILE"
 else
-    echo "❌ Échec du montage"
-    echo "   Vérifiez:"
-    echo "   - La connectivité réseau vers $NETWORK_IP"
-    echo "   - Les identifiants fournis"
-    echo "   - Le chemin du partage: $FULL_SHARE"
+    echo "⚠️  Impossible de mettre à jour $CONFIG_FILE (droits insuffisants)."
 fi
 
 echo
